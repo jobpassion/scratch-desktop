@@ -33,13 +33,11 @@ const ScratchDesktopAppStateHOC = function (WrappedComponent) {
             });
         }
         render () {
-            const shouldShowTelemetryModal = (typeof ipcRenderer.sendSync('getTelemetryDidOptIn') !== 'boolean');
-
             return (<WrappedComponent
                 isTelemetryEnabled={this.state.telemetryDidOptIn}
                 onTelemetryModalOptIn={this.handleTelemetryModalOptIn}
                 onTelemetryModalOptOut={this.handleTelemetryModalOptOut}
-                showTelemetryModal={shouldShowTelemetryModal}
+                showTelemetryModal={false}
 
                 // allow passed-in props to override any of the above
                 {...this.props}

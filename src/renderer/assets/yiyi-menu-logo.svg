@@ -1,0 +1,39 @@
+<svg width="218" height="42" viewBox="0 0 218 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="badgeBg" x1="2" y1="3" x2="62" y2="39" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#8BD3FF"/>
+            <stop offset="0.5" stop-color="#7D9CFF"/>
+            <stop offset="1" stop-color="#FFA3C8"/>
+        </linearGradient>
+    </defs>
+
+    <rect x="1.5" y="3" width="62" height="36" rx="14" fill="url(#badgeBg)"/>
+
+    <circle cx="30.5" cy="15" r="8.8" fill="#8A5B3C"/>
+    <circle cx="22.6" cy="10" r="4.2" fill="#8A5B3C"/>
+    <circle cx="38.2" cy="9.6" r="4.2" fill="#8A5B3C"/>
+    <circle cx="22.6" cy="10" r="2.3" fill="#A96D49"/>
+    <circle cx="38.2" cy="9.6" r="2.3" fill="#A96D49"/>
+    <circle cx="30.8" cy="16" r="7" fill="#9C6541"/>
+    <ellipse cx="30.8" cy="18.5" rx="5.1" ry="4" fill="#F7D6BA"/>
+    <circle cx="27.6" cy="16.1" r="0.9" fill="#1E1B3A"/>
+    <circle cx="33.8" cy="16.1" r="0.9" fill="#1E1B3A"/>
+    <circle cx="28" cy="15.7" r="0.32" fill="#FFFFFF"/>
+    <circle cx="34.2" cy="15.7" r="0.32" fill="#FFFFFF"/>
+    <ellipse cx="30.8" cy="18.7" rx="1.45" ry="1.05" fill="#40231C"/>
+    <path d="M28.8 20.6C29.7 21.9 30.8 22.4 32 22.4C33.1 22.4 34.2 21.9 35 20.6" stroke="#B35B5B" stroke-width="1.25" stroke-linecap="round"/>
+
+    <path d="M9.6 31C12.7 22.4 20.2 16.8 29 16.8C35 16.8 39.8 19.2 42.8 23.3C40.1 22.9 38.3 22.9 34 23.7C32.4 21.4 29.8 20 26.7 20C20.7 20 15.5 24 12.9 31H9.6Z" fill="#FFFFFF" fill-opacity="0.95"/>
+    <path d="M7.3 31C10.6 20.9 18.6 14.3 28.3 14.3C35.4 14.3 41 17.8 44.2 23.6C42.8 23.3 41.2 23.3 39.6 23.6C36.6 19.2 32.3 17.1 28.3 17.1C20.8 17.1 14.4 22.2 11.3 31H7.3Z" fill="#FF7E7E"/>
+    <path d="M10 31C12.7 23.5 18.9 18.5 27.2 18.5C33.3 18.5 38.2 21.5 40.8 25.9C39.4 25.9 38 26.2 36.4 26.6C34.2 24 31 22.5 27.2 22.5C21.6 22.5 16.9 26.4 14.4 31H10Z" fill="#FFB84D"/>
+    <path d="M13.3 31C15.6 24.8 21 20.7 27.8 20.7C32.5 20.7 36.3 22.8 38.7 26.4C37.4 26.8 36.1 27.3 34.8 27.9C32.9 25.8 30.3 24.6 27.3 24.6C22.9 24.6 19 27.1 17 31H13.3Z" fill="#FFE27A"/>
+    <circle cx="13.8" cy="30.6" r="5.4" fill="white"/>
+    <circle cx="36.2" cy="30.8" r="5" fill="white"/>
+    <circle cx="40.5" cy="27.3" r="3.5" fill="white"/>
+
+    <path d="M44.8 6L46.1 9.1L49.4 9.3L46.8 11.5L47.6 14.6L44.8 13L42.1 14.6L42.9 11.5L40.3 9.3L43.6 9.1L44.8 6Z" fill="#FFF2A8"/>
+    <circle cx="49.8" cy="15" r="1" fill="#FFF4C0"/>
+
+    <rect x="70" y="8" width="146" height="24" rx="12" fill="#FFFFFF" fill-opacity="0.18"/>
+    <text x="82" y="24.5" fill="white" font-size="16" font-weight="700" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, sans-serif">一一编程乐园</text>
+</svg>

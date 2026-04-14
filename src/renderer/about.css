@@ -1,8 +1,10 @@
 html, body {
-    background-color: #855CD6;
+    background:
+        radial-gradient(circle at top, rgba(255, 248, 196, 0.7), rgba(255, 248, 196, 0) 24%),
+        linear-gradient(155deg, #8ccfff 0%, #7aa9ff 45%, #ffa8cf 100%);
     color: white;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    font-weight: bolder;
+    font-family: "Trebuchet MS", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 600;
 }
 
 a:active, a:hover, a:link, a:visited {
@@ -14,26 +16,96 @@ a:active, a:hover {
 }
 
 .aboutBox {
-    margin: 0;
+    width: min(46rem, calc(100vw - 3rem));
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+    display: grid;
+    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+    gap: 1.5rem;
+    padding: 1.5rem;
+    border-radius: 2rem;
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 28px 60px rgba(58, 66, 130, 0.24);
+    backdrop-filter: blur(12px);
+}
+
+.aboutHero {
+    position: relative;
 }
 
 .aboutLogo {
-    max-width: 10rem;
-    max-height: 10rem;
+    position: absolute;
+    right: -0.75rem;
+    bottom: -0.75rem;
+    width: 5.5rem;
+    height: 5.5rem;
+    padding: 0.65rem;
+    border-radius: 1.35rem;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 12px 28px rgba(54, 50, 96, 0.2);
+}
+
+.heroImage {
+    display: block;
+    width: 100%;
+    border-radius: 1.5rem;
+    object-fit: cover;
 }
 
 .aboutText {
-    margin: 1.5rem;
+    margin: 0;
+    align-self: center;
+}
+
+.aboutText h2 {
+    margin: 0.65rem 0 0.45rem;
+    font-size: 2.2rem;
+}
+
+.aboutBadge {
+    display: inline-flex;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.24);
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+}
+
+.aboutMessage {
+    margin: 0 0 0.9rem;
+    max-width: 24rem;
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+.versionLabel {
+    margin-bottom: 0.9rem;
 }
 
 .aboutDetails {
-    font-size: x-small;
+    width: 100%;
+    font-size: 0.75rem;
+    border-collapse: collapse;
+}
+
+.aboutDetails td {
+    padding: 0.2rem 0;
 }
 
 .aboutFooter {
     font-size: small;
+}
+
+@media (max-width: 720px) {
+    .aboutBox {
+        grid-template-columns: 1fr;
+        width: calc(100vw - 2rem);
+    }
+
+    .aboutLogo {
+        width: 4.75rem;
+        height: 4.75rem;
+    }
 }

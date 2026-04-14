@@ -2,24 +2,72 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <title>一一编程乐园</title>
     <style>
         body {
-           background-color: #855CD6;
-        }
-        .splash {
-            color: white;
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-            font-size: xx-large;
-            font-weight: bolder;
             margin: 0;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            background:
+                radial-gradient(circle at top, rgba(255, 248, 196, 0.85), rgba(255, 248, 196, 0) 28%),
+                linear-gradient(160deg, #8cd0ff 0%, #6ca7ff 42%, #ff9ac6 100%);
+            overflow: hidden;
+        }
+        body,
+        .splash-shell {
+            min-height: 100vh;
+        }
+        .splash-shell {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: "Trebuchet MS", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            color: #fff;
+        }
+        .splash-card {
+            width: min(32rem, calc(100vw - 3rem));
+            padding: 2rem 2.25rem;
+            border-radius: 2rem;
+            background: rgba(255, 255, 255, 0.16);
+            box-shadow: 0 28px 60px rgba(60, 69, 132, 0.22);
+            backdrop-filter: blur(12px);
+            text-align: center;
+        }
+        .splash-badge {
+            display: inline-block;
+            padding: 0.45rem 0.9rem;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.24);
+            font-size: 0.85rem;
+            letter-spacing: 0.08em;
+        }
+        .splash-title {
+            margin: 1rem 0 0.5rem;
+            font-size: clamp(2rem, 5vw, 3.4rem);
+            line-height: 1.1;
+        }
+        .splash-copy {
+            margin: 0 auto;
+            max-width: 24rem;
+            font-size: 1.05rem;
+            line-height: 1.6;
+        }
+        .splash-loading {
+            margin-top: 1.25rem;
+            font-size: 0.95rem;
+            opacity: 0.95;
         }
     </style>
 </head>
 <body>
-    <div id="app"><p class="splash">Scratch is loading...</p></div>
+    <div id="app">
+        <div class="splash-shell">
+            <div class="splash-card">
+                <div class="splash-badge">FOR 贾一一</div>
+                <h1 class="splash-title">一一编程乐园</h1>
+                <p class="splash-copy">愿你像拿着星星魔法棒的小熊一样，带着好奇心和想象力，创造属于自己的小世界。</p>
+                <p class="splash-loading">乐园正在打开...</p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

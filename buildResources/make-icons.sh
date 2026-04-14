@@ -1,5 +1,5 @@
 #!/bin/bash
-SRC=../src/icon/ScratchDesktop.svg
+SRC=../src/icon/ScratchDesktop.png
 OUT_ICONSET=ScratchDesktop.iconset
 OUT_ICNS=ScratchDesktop.icns
 OUT_ICO=ScratchDesktop.ico

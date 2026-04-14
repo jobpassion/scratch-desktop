@@ -2,7 +2,7 @@ directories:
   buildResources: buildResources
   output: dist
 appId: edu.mit.scratch.scratch-desktop
-productName: "Scratch 3"
+productName: "一一编程乐园"
 publish: # empty provider list = don't publish
 files:
   - dist/main/
@@ -26,12 +26,12 @@ mac:
   hardenedRuntime: true
   icon: buildResources/ScratchDesktop.icns
   provisioningProfile: build/AppStore_edu.mit.scratch.scratch-desktop.provisionprofile
-  artifactName: "Scratch ${version}.${ext}"
+  artifactName: "一一编程乐园 ${version}.${ext}"
   target:
     - dmg
     - mas
 dmg:
-  title: "Scratch ${version}"
+  title: "一一编程乐园 ${version}"
 mas:
   category: public.app-category.education
   entitlements: buildResources/entitlements.mas.plist
@@ -50,10 +50,10 @@ appx:
   identityName: ScratchFoundation.ScratchDesktop
   publisherDisplayName: "Scratch Foundation"
   publisher: "CN=2EC43DF1-469A-4119-9AB9-568A0A1FF65F"
-  artifactName: "Scratch ${version} ${arch}.${ext}"
+  artifactName: "一一编程乐园 ${version} ${arch}.${ext}"
 nsis:
   oneClick: false # allow user to choose per-user or per-machine
-  artifactName: "Scratch ${version} Setup.${ext}"
+  artifactName: "一一编程乐园 ${version} Setup.${ext}"
 linux:
   target: AppImage
   executableName: scratch-desktop

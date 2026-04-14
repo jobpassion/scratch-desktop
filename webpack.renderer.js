@@ -1,5 +1,6 @@
 const path = require('path');
 const fsExtra = require('fs-extra');
+const webpack = require('webpack');
 
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
@@ -66,6 +67,12 @@ module.exports = makeConfig(
             /node_modules[\\/]+@vernier[\\/]+godirect/
         ],
         plugins: [
+            new webpack.NormalModuleReplacementPlugin(
+                /scratch-logo(-android)?\.svg$/,
+                resource => {
+                    resource.request = path.resolve(__dirname, 'src/renderer/assets/yiyi-menu-logo.svg');
+                }
+            ),
             new HtmlWebpackPlugin({
                 filename: 'index.html',
                 template: generateIndexFile(template),

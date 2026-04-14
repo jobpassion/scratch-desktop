@@ -39,6 +39,14 @@ const devToolKey = ((process.platform === 'darwin') ?
 // global window references prevent them from being garbage-collected
 const _windows = {};
 const PORT = process.env.PORT || 8601;
+const developmentIconPath = path.join(process.cwd(), 'src/icon/ScratchDesktop.png');
+
+const getWindowIcon = () => {
+    if (isDevelopment && fs.existsSync(developmentIconPath)) {
+        return developmentIconPath;
+    }
+    return null;
+};
 
 // enable connecting to Scratch Link even if we DNS / Internet access is not available
 // this must happen BEFORE the app ready event!
@@ -170,6 +178,7 @@ const createWindow = ({search = null, url = 'index.html', ...browserWindowOption
     const window = new BrowserWindow({
         useContentSize: true,
         show: false,
+        ...(getWindowIcon() ? {icon: getWindowIcon()} : {}),
         webPreferences: {
             contextIsolation: false,
             nodeIntegration: true
@@ -361,7 +370,7 @@ const createMainWindow = () => {
         const choice = dialog.showMessageBoxSync(window, {
             title: packageJson.productName,
             type: 'question',
-            message: 'Leave Scratch?',
+            message: `离开${packageJson.productName}？`,
             detail: 'Any unsaved changes will be lost.',
             buttons: ['Stay', 'Leave'],
             cancelId: 0, // closing the dialog means "stay"
@@ -411,6 +420,10 @@ if (process.platform === 'win32') {
 
 // create main BrowserWindow when electron is ready
 app.on('ready', () => {
+    if (process.platform === 'darwin' && fs.existsSync(developmentIconPath)) {
+        app.dock.setIcon(developmentIconPath);
+    }
+
     if (isDevelopment) {
         import('electron-devtools-installer').then(importedModule => {
             const {default: installExtension, ...devToolsExtensions} = importedModule;

@@ -22,6 +22,7 @@ import {
 import ElectronStorageHelper from '../common/ElectronStorageHelper';
 
 import showPrivacyPolicy from './showPrivacyPolicy';
+import yiyiMenuLogo from './assets/gemini-menu-logo.png';
 
 /**
  * Higher-order component to add desktop logic to the GUI.
@@ -33,6 +34,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         constructor (props) {
             super(props);
             bindAll(this, [
+                'applyCustomMenuLogo',
                 'handleProjectTelemetryEvent',
                 'handleSetTitleFromSave',
                 'handleStorageInit',
@@ -73,9 +75,23 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         }
         componentDidMount () {
             ipcRenderer.on('setTitleFromSave', this.handleSetTitleFromSave);
+            this.applyCustomMenuLogo();
+            this.logoObserver = window.setInterval(this.applyCustomMenuLogo, 500);
         }
         componentWillUnmount () {
             ipcRenderer.removeListener('setTitleFromSave', this.handleSetTitleFromSave);
+            window.clearInterval(this.logoObserver);
+        }
+        applyCustomMenuLogo () {
+            const logoImage = document.getElementById('logo_img');
+            if (!logoImage) return;
+            if (logoImage.src !== yiyiMenuLogo) {
+                logoImage.src = yiyiMenuLogo;
+                logoImage.alt = '一一编程乐园';
+            }
+            logoImage.style.height = '3rem';
+            logoImage.style.width = 'auto';
+            logoImage.style.maxWidth = 'none';
         }
         handleClickAbout () {
             ipcRenderer.send('open-about-window');
