@@ -1,4 +1,5 @@
 import {BrowserWindow, Menu, app, dialog, ipcMain, shell, systemPreferences} from 'electron';
+import ElectronStore from 'electron-store';
 import fs from 'fs-extra';
 import path from 'path';
 import {URL} from 'url';
@@ -13,6 +14,7 @@ import packageJson from '../../package.json';
 
 // suppress deprecation warning; this will be the default in Electron 9
 app.allowRendererProcessReuse = true;
+app.setName(packageJson.productName);
 
 telemetry.appWasOpened();
 
@@ -40,12 +42,49 @@ const devToolKey = ((process.platform === 'darwin') ?
 const _windows = {};
 const PORT = process.env.PORT || 8601;
 const developmentIconPath = path.join(process.cwd(), 'src/icon/ScratchDesktop.png');
+const projectStore = new ElectronStore({
+    name: 'project-preferences'
+});
+const lastProjectPathKey = 'lastProjectPath';
 
 const getWindowIcon = () => {
     if (isDevelopment && fs.existsSync(developmentIconPath)) {
         return developmentIconPath;
     }
     return null;
+};
+
+const sanitizeProjectFileName = projectTitle => {
+    const normalizedTitle = (projectTitle || '未命名作品').trim();
+    const safeTitle = Array.from(normalizedTitle)
+        .map(character => {
+            const codePoint = character.codePointAt(0);
+            if ('<>:"/\\|?*'.includes(character) || codePoint < 32) {
+                return '_';
+            }
+            return character;
+        })
+        .join('')
+        .replace(/\.+$/g, '')
+        .trim();
+    return safeTitle || '未命名作品';
+};
+
+const getLastProjectPath = () => projectStore.get(lastProjectPathKey);
+
+const rememberProjectPath = projectPath => {
+    if (projectPath) {
+        projectStore.set(lastProjectPathKey, projectPath);
+    }
+};
+
+const getDefaultProjectPath = projectTitle => {
+    const savedProjectPath = getLastProjectPath();
+    if (savedProjectPath) {
+        return savedProjectPath;
+    }
+    const defaultDirectory = path.join(app.getPath('documents'), packageJson.productName);
+    return path.join(defaultDirectory, `${sanitizeProjectFileName(projectTitle)}.sb3`);
 };
 
 // enable connecting to Scratch Link even if we DNS / Internet access is not available
@@ -332,6 +371,7 @@ const createMainWindow = () => {
                     }
                     await fs.move(tempPath, userChosenPath, {overwrite: true});
                     if (isProjectSave) {
+                        rememberProjectPath(userChosenPath);
                         const newProjectTitle = path.basename(userChosenPath, extName);
                         webContents.send('setTitleFromSave', {title: newProjectTitle});
 
@@ -470,16 +510,22 @@ ipcMain.on('open-privacy-policy-window', () => {
 
 // start loading initial project data before the GUI needs it so the load seems faster
 const initialProjectDataPromise = (async () => {
-    if (argv._.length === 0) {
-        // no command line argument means no initial project data
-        return;
-    }
+    let projectPath;
     if (argv._.length > 1) {
         log.warn(`Expected 1 command line argument but received ${argv._.length}.`);
     }
-    const projectPath = argv._[argv._.length - 1];
+    if (argv._.length > 0) {
+        projectPath = argv._[argv._.length - 1];
+    } else {
+        projectPath = getLastProjectPath();
+    }
+    if (!projectPath) {
+        // no command line argument or remembered project means no initial project data
+        return;
+    }
     try {
         const projectData = await promisify(fs.readFile)(projectPath, null);
+        rememberProjectPath(projectPath);
         return projectData;
     } catch (e) {
         log.error(`Error loading project data: ${e}`);
@@ -494,3 +540,14 @@ const initialProjectDataPromise = (async () => {
 })(); // IIFE
 
 ipcMain.handle('get-initial-project-data', () => initialProjectDataPromise);
+ipcMain.handle('quick-save-project', async (_event, {projectData, projectTitle}) => {
+    const savePath = getDefaultProjectPath(projectTitle);
+    await fs.ensureDir(path.dirname(savePath));
+    await fs.writeFile(savePath, Buffer.from(projectData));
+    rememberProjectPath(savePath);
+
+    return {
+        path: savePath,
+        title: path.basename(savePath, path.extname(savePath))
+    };
+});
