@@ -1,3 +1,4 @@
+import {spawn} from 'child_process';
 import {BrowserWindow, Menu, app, dialog, ipcMain, shell, systemPreferences} from 'electron';
 import ElectronStore from 'electron-store';
 import fs from 'fs-extra';
@@ -46,6 +47,7 @@ const projectStore = new ElectronStore({
     name: 'project-preferences'
 });
 const lastProjectPathKey = 'lastProjectPath';
+let currentSpeechProcess = null;
 
 const getWindowIcon = () => {
     if (isDevelopment && fs.existsSync(developmentIconPath)) {
@@ -53,6 +55,61 @@ const getWindowIcon = () => {
     }
     return null;
 };
+
+const stopSpeakingText = () => {
+    if (currentSpeechProcess) {
+        currentSpeechProcess.kill('SIGTERM');
+        currentSpeechProcess = null;
+    }
+};
+
+const speakText = text => new Promise(resolve => {
+    const normalizedText = String(text || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    log.info(`[tts] speak request: "${normalizedText}"`);
+    if (!normalizedText || process.platform !== 'darwin') {
+        log.warn(`[tts] skipped, text empty or unsupported platform: ${process.platform}`);
+        resolve({spoken: false});
+        return;
+    }
+
+    stopSpeakingText();
+
+    const args = ['-r', '185'];
+    args.push(normalizedText);
+    log.info('[tts] launching say with system-default voice rate=185');
+
+    let childProcess;
+    try {
+        childProcess = spawn('say', args, {
+            stdio: 'ignore'
+        });
+    } catch (error) {
+        log.error(`Failed to start macOS speech: ${error.message}`);
+        resolve({spoken: false, error: error.message});
+        return;
+    }
+
+    currentSpeechProcess = childProcess;
+    log.info(`[tts] say started pid=${childProcess.pid}`);
+
+    childProcess.once('error', error => {
+        if (currentSpeechProcess === childProcess) {
+            currentSpeechProcess = null;
+        }
+        log.error(`macOS speech error: ${error.message}`);
+        resolve({spoken: false, error: error.message});
+    });
+
+    childProcess.once('exit', code => {
+        if (currentSpeechProcess === childProcess) {
+            currentSpeechProcess = null;
+        }
+        log.info(`[tts] say exited with code=${code}`);
+        resolve({spoken: code === 0, interrupted: code !== 0});
+    });
+});
 
 const sanitizeProjectFileName = projectTitle => {
     const normalizedTitle = (projectTitle || '未命名作品').trim();
@@ -443,6 +500,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+    stopSpeakingText();
     telemetry.appWillClose();
 });
 
@@ -550,4 +608,8 @@ ipcMain.handle('quick-save-project', async (_event, {projectData, projectTitle})
         path: savePath,
         title: path.basename(savePath, path.extname(savePath))
     };
+});
+ipcMain.handle('speak-block-text', (_event, {text}) => {
+    log.info('[tts] ipc speak-block-text received');
+    return speakText(text);
 });

@@ -32,18 +32,54 @@ import yiyiMenuLogo from './assets/gemini-menu-logo.png';
  */
 const ScratchDesktopGUIHOC = function (WrappedComponent) {
     const initialProjectLoadingState = 'LOADING_VM_FILE_UPLOAD';
+    const blockSpeechTriggerMode = 'click';
+    const longPressDelay = 700;
+    const longPressMoveTolerance = 8;
+    const speechDebugPrefix = '[block-speech]';
+    const getBlocklyMainWorkspace = () => {
+        if (window.Blockly && window.Blockly.getMainWorkspace) {
+            return window.Blockly.getMainWorkspace();
+        }
+        if (window.ScratchBlocks && window.ScratchBlocks.getMainWorkspace) {
+            return window.ScratchBlocks.getMainWorkspace();
+        }
+        return null;
+    };
+    const getBlocklyWorkspaces = () => {
+        const mainWorkspace = getBlocklyMainWorkspace();
+        if (!mainWorkspace) {
+            return [];
+        }
+        const workspaces = [mainWorkspace];
+        const flyout = mainWorkspace.getFlyout && mainWorkspace.getFlyout();
+        const flyoutWorkspace = flyout && flyout.getWorkspace && flyout.getWorkspace();
+        if (flyoutWorkspace) {
+            workspaces.push(flyoutWorkspace);
+        }
+        return workspaces;
+    };
 
     class ScratchDesktopGUIComponent extends React.Component {
         constructor (props) {
             super(props);
             bindAll(this, [
                 'applyCustomMenuLogo',
+                'cancelPendingBlockSpeech',
+                'createSpeechTextForBlock',
+                'findBlockForEventTarget',
                 'handleQuickSaveProject',
+                'handleGlobalPointerMove',
+                'handleGlobalPointerUp',
+                'handleWorkspaceImmediateSpeech',
+                'handleWorkspacePointerDown',
                 'handleProjectTelemetryEvent',
                 'removeQuickSaveButton',
                 'removeQuickSaveFeedback',
+                'setupBlockSpeechListeners',
                 'showQuickSaveFeedback',
                 'syncQuickSaveButton',
+                'speakBlock',
+                'tearDownBlockSpeechListeners',
                 'handleSetTitleFromSave',
                 'handleStorageInit',
                 'handleUpdateProjectTitle'
@@ -85,14 +121,21 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             ipcRenderer.on('setTitleFromSave', this.handleSetTitleFromSave);
             this.applyCustomMenuLogo();
             this.syncQuickSaveButton();
+            this.setupBlockSpeechListeners();
             this.logoObserver = window.setInterval(() => {
                 this.applyCustomMenuLogo();
                 this.syncQuickSaveButton();
+                this.setupBlockSpeechListeners();
             }, 500);
+            window.addEventListener('mousemove', this.handleGlobalPointerMove, true);
+            window.addEventListener('mouseup', this.handleGlobalPointerUp, true);
         }
         componentWillUnmount () {
             ipcRenderer.removeListener('setTitleFromSave', this.handleSetTitleFromSave);
             window.clearInterval(this.logoObserver);
+            window.removeEventListener('mousemove', this.handleGlobalPointerMove, true);
+            window.removeEventListener('mouseup', this.handleGlobalPointerUp, true);
+            this.tearDownBlockSpeechListeners();
             this.removeQuickSaveButton();
             this.removeQuickSaveFeedback();
         }
@@ -112,6 +155,185 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         }
         handleProjectTelemetryEvent (event, metadata) {
             ipcRenderer.send(event, metadata);
+        }
+        setupBlockSpeechListeners () {
+            const workspaces = getBlocklyWorkspaces();
+            const canvasEntries = workspaces
+                .map(workspace => {
+                    const canvas = workspace && workspace.getCanvas && workspace.getCanvas();
+                    if (!canvas) {
+                        return null;
+                    }
+                    return {
+                        canvas,
+                        isFlyout: workspace.isFlyout
+                    };
+                })
+                .filter(Boolean);
+            if (!canvasEntries.length) {
+                console.log(`${speechDebugPrefix} workspace canvas not ready`);
+                return;
+            }
+            const nextCanvasMap = new Map(canvasEntries.map(entry => [entry.canvas, entry]));
+            const currentCanvasMap = this.blockSpeechCanvases || new Map();
+            const didCanvasSetChange = (
+                currentCanvasMap.size !== nextCanvasMap.size ||
+                Array.from(nextCanvasMap.keys()).some(canvas => !currentCanvasMap.has(canvas))
+            );
+            if (!didCanvasSetChange) {
+                return;
+            }
+            this.tearDownBlockSpeechListeners();
+            nextCanvasMap.forEach(({canvas}) => {
+                if (blockSpeechTriggerMode === 'click') {
+                    canvas.addEventListener('mousedown', this.handleWorkspaceImmediateSpeech, true);
+                } else {
+                    canvas.addEventListener('mousedown', this.handleWorkspacePointerDown, true);
+                }
+            });
+            this.blockSpeechCanvases = nextCanvasMap;
+            console.log(`${speechDebugPrefix} listeners attached`, nextCanvasMap.size, blockSpeechTriggerMode);
+        }
+        tearDownBlockSpeechListeners () {
+            this.cancelPendingBlockSpeech();
+            if (this.blockSpeechCanvases) {
+                this.blockSpeechCanvases.forEach(({canvas}) => {
+                    canvas.removeEventListener('mousedown', this.handleWorkspaceImmediateSpeech, true);
+                    canvas.removeEventListener('mousedown', this.handleWorkspacePointerDown, true);
+                });
+                this.blockSpeechCanvases = null;
+                console.log(`${speechDebugPrefix} listeners detached`);
+            }
+        }
+        handleWorkspaceImmediateSpeech (event) {
+            if (event.button !== 0) {
+                console.log(`${speechDebugPrefix} ignored non-left immediate speech`);
+                return;
+            }
+            const block = this.findBlockForEventTarget(event.target);
+            if (!block) {
+                console.log(`${speechDebugPrefix} immediate speech ignored, no workspace block`);
+                return;
+            }
+            console.log(`${speechDebugPrefix} immediate speech triggered`, block.type, block.id);
+            this.speakBlock(block);
+        }
+        handleWorkspacePointerDown (event) {
+            if (event.button !== 0) {
+                console.log(`${speechDebugPrefix} ignored non-left click`);
+                return;
+            }
+            const block = this.findBlockForEventTarget(event.target);
+            if (!block) {
+                console.log(`${speechDebugPrefix} pointer down ignored, no workspace block`);
+                return;
+            }
+            console.log(`${speechDebugPrefix} pointer down on block`, block.type, block.id);
+            this.cancelPendingBlockSpeech();
+            this.pendingBlockSpeech = {
+                block: block,
+                startX: event.clientX,
+                startY: event.clientY
+            };
+            this.pendingBlockSpeech.timer = window.setTimeout(() => {
+                const currentPendingSpeech = this.pendingBlockSpeech;
+                this.cancelPendingBlockSpeech();
+                if (currentPendingSpeech && currentPendingSpeech.block) {
+                    console.log(
+                        `${speechDebugPrefix} long press triggered`,
+                        currentPendingSpeech.block.type,
+                        currentPendingSpeech.block.id
+                    );
+                    this.speakBlock(currentPendingSpeech.block);
+                }
+            }, longPressDelay);
+        }
+        handleGlobalPointerMove (event) {
+            if (!this.pendingBlockSpeech) {
+                return;
+            }
+            const movedX = Math.abs(event.clientX - this.pendingBlockSpeech.startX);
+            const movedY = Math.abs(event.clientY - this.pendingBlockSpeech.startY);
+            if (movedX > longPressMoveTolerance || movedY > longPressMoveTolerance) {
+                console.log(`${speechDebugPrefix} canceled by move`, {movedX, movedY});
+                this.cancelPendingBlockSpeech();
+            }
+        }
+        handleGlobalPointerUp () {
+            if (this.pendingBlockSpeech) {
+                console.log(`${speechDebugPrefix} canceled by pointer up`);
+            }
+            this.cancelPendingBlockSpeech();
+        }
+        cancelPendingBlockSpeech () {
+            if (this.pendingBlockSpeech && this.pendingBlockSpeech.timer) {
+                window.clearTimeout(this.pendingBlockSpeech.timer);
+            }
+            this.pendingBlockSpeech = null;
+        }
+        findBlockForEventTarget (target) {
+            if (!target || !target.closest) {
+                return null;
+            }
+            const blockElement = target.closest('[data-id]');
+            if (!blockElement) {
+                return null;
+            }
+            const workspaces = getBlocklyWorkspaces();
+            for (const workspace of workspaces) {
+                const block = workspace.getBlockById(blockElement.dataset.id);
+                if (block) {
+                    return block;
+                }
+            }
+            console.log(`${speechDebugPrefix} workspace missing while resolving block`);
+            return null;
+        }
+        createSpeechTextForBlock (block) {
+            const rawText = block.toString(null, '空白')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (!rawText || rawText === '???') {
+                return '';
+            }
+
+            const replacements = [
+                [/^重复执行 (.+)$/u, '重复$1次'],
+                [/^如果 (.+) 那么$/u, '如果$1，就执行下面的积木'],
+                [/^如果 (.+) 那么 否则$/u, '如果$1，就执行前一部分，否则执行后一部分'],
+                [/^将 (.+) 增加 (.+)$/u, '把$1加$2'],
+                [/^将 (.+) 设为 (.+)$/u, '把$1设为$2']
+            ];
+            const normalizedText = replacements.reduce(
+                (text, [pattern, replacement]) => text.replace(pattern, replacement),
+                rawText
+            );
+            const speechText = normalizedText
+                .replace(/空白/gu, '空白内容')
+                .replace(/\s+/g, ' ')
+                .trim();
+            console.log(`${speechDebugPrefix} text generated`, {
+                blockType: block.type,
+                blockId: block.id,
+                rawText,
+                speechText
+            });
+            return speechText;
+        }
+        speakBlock (block) {
+            const text = this.createSpeechTextForBlock(block);
+            if (!text) {
+                console.log(`${speechDebugPrefix} skipped empty text`, block.type, block.id);
+                return;
+            }
+            console.log(`${speechDebugPrefix} invoking ipc`, text);
+            ipcRenderer.invoke('speak-block-text', {text})
+                .then(result => {
+                    console.log(`${speechDebugPrefix} ipc result`, result);
+                })
+                .catch(error => {
+                    console.error(`${speechDebugPrefix} ipc failed`, error);
+                });
         }
         removeQuickSaveButton () {
             const quickSaveButton = document.getElementById('desktop-quick-save-button');
