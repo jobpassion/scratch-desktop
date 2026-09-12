@@ -228,7 +228,7 @@ const handlePermissionRequest = async (webContents, permission, callback, detail
         // deny: request came from a subframe of the main window, not the main frame
         return callback(false);
     }
-    if (permission !== 'media') {
+    if (permission !== 'media' && permission !== 'bluetooth' && permission !== 'bluetoothScanning') {
         // deny: request is for some other kind of access like notifications or pointerLock
         return callback(false);
     }
@@ -237,6 +237,7 @@ const handlePermissionRequest = async (webContents, permission, callback, detail
         // deny: request came from a URL outside of our "sandbox"
         return callback(false);
     }
+    if (permission === 'bluetooth' || permission === 'bluetoothScanning') return callback(true);
     let askForMicrophone = false;
     let askForCamera = false;
     for (const mediaType of details.mediaTypes) {
@@ -396,6 +397,46 @@ const createMainWindow = () => {
         title: `${packageJson.productName} ${packageJson.version}` // something like "Scratch 3.14"
     });
     const webContents = window.webContents;
+    webContents.session.setPermissionCheckHandler((requestingWebContents, permission) => (
+        requestingWebContents === webContents &&
+        (permission === 'bluetooth' || permission === 'bluetoothScanning' || permission === 'media')
+    ));
+    let bluetoothChoice = null;
+    webContents.on('select-bluetooth-device', (event, devices, callback) => {
+        event.preventDefault();
+        if (!bluetoothChoice) {
+            bluetoothChoice = {devices: new Map(), callback, timer: null, showing: false};
+            bluetoothChoice.timer = setTimeout(() => {
+                const choice = bluetoothChoice;
+                if (!choice || choice.showing) return;
+                choice.showing = true;
+                const available = [...choice.devices.values()].filter(device => device.deviceName && (
+                    device.deviceName.startsWith('YY-Board') || device.deviceName.startsWith('MPY ESP32')
+                ));
+                if (bluetoothChoice === choice) {
+                    bluetoothChoice = null;
+                    choice.callback(available.length ? available[0].deviceId : '');
+                }
+            }, 10000);
+        }
+        devices.forEach(device => bluetoothChoice.devices.set(device.deviceId, device));
+        const board = devices.find(device => device.deviceName && (
+            device.deviceName.startsWith('YY-Board') || device.deviceName.startsWith('MPY ESP32')
+        ));
+        if (board && !bluetoothChoice.showing) {
+            const choice = bluetoothChoice;
+            clearTimeout(choice.timer);
+            bluetoothChoice = null;
+            choice.callback(board.deviceId);
+        }
+    });
+    window.on('closed', () => {
+        if (bluetoothChoice) {
+            clearTimeout(bluetoothChoice.timer);
+            bluetoothChoice.callback('');
+            bluetoothChoice = null;
+        }
+    });
 
     webContents.session.on('will-download', (willDownloadEvent, downloadItem) => {
         const isProjectSave = getIsProjectSave(downloadItem);
@@ -487,7 +528,9 @@ const createMainWindow = () => {
 };
 
 if (process.platform === 'darwin') {
-    const osxMenu = Menu.buildFromTemplate(MacOSMenu(app));
+    const osxMenu = Menu.buildFromTemplate(MacOSMenu(app, () => {
+        if (_windows.main) _windows.main.webContents.send('enter-board-programming');
+    }));
     Menu.setApplicationMenu(osxMenu);
 } else {
     // disable menu for other platforms
@@ -561,6 +604,7 @@ app.on('ready', () => {
 ipcMain.on('open-about-window', () => {
     _windows.about.show();
 });
+
 
 ipcMain.on('open-privacy-policy-window', () => {
     _windows.privacy.show();

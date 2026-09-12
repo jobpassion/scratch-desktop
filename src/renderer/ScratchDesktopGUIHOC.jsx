@@ -24,6 +24,10 @@ import ElectronStorageHelper from '../common/ElectronStorageHelper';
 
 import showPrivacyPolicy from './showPrivacyPolicy';
 import yiyiMenuLogo from './assets/gemini-menu-logo.png';
+import ESP32Extension from './board/ESP32Extension';
+import compileESP32 from './board/compileESP32';
+import ESP32Bluetooth from './board/ESP32Bluetooth';
+import filterBoardToolbox from './board/filterBoardToolbox';
 
 /**
  * Higher-order component to add desktop logic to the GUI.
@@ -71,6 +75,9 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 'findBlockForEventTarget',
                 'findCategoryElementForEventTarget',
                 'handleQuickSaveProject',
+                'enterBoardProgramming',
+                'handleBoardConnect',
+                'handleBoardUpload',
                 'handleCategoryImmediateSpeech',
                 'handleGlobalPointerMove',
                 'handleGlobalPointerUp',
@@ -84,7 +91,9 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 'showQuickSaveFeedback',
                 'speakCategory',
                 'speakText',
+                'syncBoardConnection',
                 'syncQuickSaveButton',
+                'syncBoardToolbox',
                 'speakBlock',
                 'tearDownBlockSpeechListeners',
                 'tearDownCategorySpeechListeners',
@@ -92,6 +101,19 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 'handleStorageInit',
                 'handleUpdateProjectTitle'
             ]);
+            this.boardMode = false;
+            this.boardBluetooth = new ESP32Bluetooth();
+            this.boardConnectionState = 'disconnected';
+            this.boardConnectPromise = null;
+            this.boardNextConnectAt = 0;
+            this.boardUploading = false;
+            this.boardProgress = 0;
+            this.boardProgressPhase = '';
+            if (!this.props.vm.extensionManager.isExtensionLoaded('esp32gpio')) {
+                const manager = this.props.vm.extensionManager;
+                const serviceName = manager._registerInternalExtension(new ESP32Extension());
+                manager._loadedExtensions.set('esp32gpio', serviceName);
+            }
             this.props.onLoadingStarted();
             ipcRenderer.invoke('get-initial-project-data').then(initialProjectData => {
                 const hasInitialProject = initialProjectData && (initialProjectData.length > 0);
@@ -102,6 +124,9 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 }
                 this.props.vm.loadProject(initialProjectData).then(
                     () => {
+                        this.boardMode = this.props.vm.runtime.targets.some(target =>
+                            Object.values(target.blocks._blocks).some(block => block.opcode.startsWith('esp32gpio_'))
+                        );
                         this.props.onLoadingCompleted();
                         this.props.onLoadedProject(initialProjectLoadingState, true);
                     },
@@ -132,13 +157,17 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         }
         componentDidMount () {
             ipcRenderer.on('setTitleFromSave', this.handleSetTitleFromSave);
+            ipcRenderer.on('enter-board-programming', this.enterBoardProgramming);
             this.applyCustomMenuLogo();
             this.syncQuickSaveButton();
+            this.syncBoardToolbox();
             this.setupBlockSpeechListeners();
             this.setupCategorySpeechListeners();
             this.logoObserver = window.setInterval(() => {
                 this.applyCustomMenuLogo();
+                this.syncBoardConnection();
                 this.syncQuickSaveButton();
+                this.syncBoardToolbox();
                 this.setupBlockSpeechListeners();
                 this.setupCategorySpeechListeners();
             }, 500);
@@ -147,6 +176,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         }
         componentWillUnmount () {
             ipcRenderer.removeListener('setTitleFromSave', this.handleSetTitleFromSave);
+            ipcRenderer.removeListener('enter-board-programming', this.enterBoardProgramming);
             window.clearInterval(this.logoObserver);
             window.removeEventListener('mousemove', this.handleGlobalPointerMove, true);
             window.removeEventListener('mouseup', this.handleGlobalPointerUp, true);
@@ -426,6 +456,14 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             if (quickSaveButton) {
                 quickSaveButton.remove();
             }
+            const boardProgrammingButton = document.getElementById('desktop-board-programming-button');
+            if (boardProgrammingButton) {
+                boardProgrammingButton.remove();
+            }
+            ['desktop-board-connect-button', 'desktop-board-upload-button', 'desktop-board-status'].forEach(id => {
+                const button = document.getElementById(id);
+                if (button) button.remove();
+            });
         }
         removeQuickSaveFeedback () {
             if (this.quickSaveFeedbackTimer) {
@@ -467,7 +505,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             this.quickSaveFeedbackTimer = window.setTimeout(() => {
                 quickSaveFeedback.remove();
                 this.quickSaveFeedbackTimer = null;
-            }, 2500);
+            }, isError ? 8000 : 2500);
         }
         syncQuickSaveButton () {
             const titleInput = document.querySelector('div[class*="menu-bar_menu-bar"] input');
@@ -511,6 +549,188 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 fontSize: '14px',
                 cursor: 'pointer'
             });
+
+            let boardProgrammingButton = document.getElementById('desktop-board-programming-button');
+            if (!boardProgrammingButton) {
+                boardProgrammingButton = document.createElement('button');
+                boardProgrammingButton.id = 'desktop-board-programming-button';
+                boardProgrammingButton.type = 'button';
+                boardProgrammingButton.addEventListener('click', this.enterBoardProgramming);
+                titleRowContainer.appendChild(boardProgrammingButton);
+            } else if (boardProgrammingButton.parentElement !== titleRowContainer) {
+                titleRowContainer.appendChild(boardProgrammingButton);
+            }
+            Object.assign(boardProgrammingButton.style, {
+                flexShrink: '0',
+                border: '0',
+                borderRadius: '8px',
+                height: '40px',
+                padding: '0 16px',
+                backgroundColor: 'rgba(15, 189, 140, 0.9)',
+                color: '#fff',
+                fontWeight: '700',
+                fontSize: '14px',
+                cursor: 'pointer'
+            });
+            boardProgrammingButton.textContent = this.boardMode ? '返回普通编程' : '板上编程';
+            const connected = this.boardBluetooth.connected;
+            const connecting = this.boardConnectionState === 'connecting';
+            const boardButtons = [
+                ['desktop-board-connect-button', connected ? 'ESP32 已连接' : connecting ? '连接中…' : '立即连接',
+                    this.handleBoardConnect],
+                ['desktop-board-upload-button', this.boardUploading ? `发送中 ${this.boardProgress}%` :
+                    connected ? '发送到板上' : '连接后发送', this.handleBoardUpload]
+            ];
+            boardButtons.forEach(([id, label, onClick]) => {
+                let button = document.getElementById(id);
+                if (!this.boardMode) {
+                    if (button) button.remove();
+                    return;
+                }
+                if (!button) {
+                    button = document.createElement('button');
+                    button.id = id;
+                    button.type = 'button';
+                    button.addEventListener('click', onClick);
+                }
+                button.textContent = label;
+                if (id === 'desktop-board-connect-button') {
+                    button.disabled = connected || connecting || this.boardUploading;
+                } else {
+                    button.disabled = !connected || this.boardUploading;
+                }
+                Object.assign(button.style, {
+                    flexShrink: '0',
+                    border: '0',
+                    borderRadius: '8px',
+                    height: '40px',
+                    padding: '0 12px',
+                    backgroundColor: '#0c956f',
+                    color: '#fff',
+                    fontWeight: '700',
+                    cursor: button.disabled ? 'default' : 'pointer',
+                    opacity: button.disabled ? 0.7 : 1
+                });
+                if (button.parentElement !== titleRowContainer) titleRowContainer.appendChild(button);
+            });
+            let status = document.getElementById('desktop-board-status');
+            if (this.boardMode) {
+                if (!status) {
+                    status = document.createElement('div');
+                    status.id = 'desktop-board-status';
+                    status.setAttribute('role', 'status');
+                    status.setAttribute('aria-live', 'polite');
+                }
+                status.textContent = this.boardUploading ?
+                    `ESP32：${this.boardProgressPhase} ${this.boardProgress}%` :
+                    connected ? 'ESP32：已连接' : connecting ? 'ESP32：连接中…' :
+                        this.boardConnectionError && this.boardConnectionError.includes('授权') ?
+                            'ESP32：未授权，请点立即连接' : 'ESP32：未连接，自动重试中';
+                status.title = this.boardConnectionError || status.textContent;
+                Object.assign(status.style, {
+                    flexShrink: '0',
+                    color: '#fff',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    whiteSpace: 'nowrap',
+                    borderRadius: '6px',
+                    padding: '6px 8px',
+                    background: this.boardUploading ?
+                        `linear-gradient(to right, #0c956f ${this.boardProgress}%, ` +
+                        `rgba(255, 255, 255, 0.16) ${this.boardProgress}%)` : 'transparent'
+                });
+                if (status.parentElement !== titleRowContainer) titleRowContainer.appendChild(status);
+            } else if (status) {
+                status.remove();
+            }
+            document.body.classList.toggle('desktop-board-mode', this.boardMode);
+        }
+        syncBoardToolbox () {
+            const workspace = getBlocklyMainWorkspace();
+            if (!workspace || !this.props.toolboxXML) return;
+            if (this.boardVariableWorkspace !== workspace) {
+                const original = workspace.getToolboxCategoryCallback('VARIABLE');
+                if (original) {
+                    workspace.registerToolboxCategoryCallback('BOARD_VARIABLE', target =>
+                        original(target).filter(node => {
+                            if (node.tagName.toLowerCase() === 'button') {
+                                return node.getAttribute('callbackKey') === 'CREATE_VARIABLE';
+                            }
+                            return ['data_variable', 'data_setvariableto', 'data_changevariableby']
+                                .includes(node.getAttribute('type'));
+                        })
+                    );
+                    this.boardVariableWorkspace = workspace;
+                }
+            }
+            const source = this.props.toolboxXML;
+            const key = `${this.boardMode}:${source}`;
+            if (this.boardToolboxKey === key) return;
+            workspace.updateToolbox(filterBoardToolbox(source, this.boardMode));
+            this.boardToolboxKey = key;
+        }
+        enterBoardProgramming () {
+            this.boardMode = !this.boardMode;
+            if (this.boardMode) this.boardNextConnectAt = 0;
+            this.syncBoardConnection();
+            this.syncQuickSaveButton();
+            this.syncBoardToolbox();
+            if (this.boardMode) this.showQuickSaveFeedback('板上模式：使用绿旗、控制和 ESP32 基础 IO 积木');
+        }
+        syncBoardConnection (requestPermission = false) {
+            if (!this.boardMode || this.boardUploading) return;
+            if (this.boardBluetooth.connected) {
+                this.boardConnectionState = 'connected';
+                return;
+            }
+            if (this.boardConnectPromise) return;
+            this.boardConnectionState = 'disconnected';
+            if (Date.now() < this.boardNextConnectAt) return;
+            this.boardConnectionState = 'connecting';
+            this.boardNextConnectAt = Date.now() + 5000;
+            this.boardConnectPromise = this.boardBluetooth.connect(requestPermission)
+                .then(() => {
+                    this.boardConnectionState = 'connected';
+                    this.boardConnectionError = null;
+                })
+                .catch(error => {
+                    this.boardConnectionState = 'disconnected';
+                    this.boardConnectionError = error.message;
+                    this.boardNextConnectAt = Date.now() + 5000;
+                })
+                .finally(() => {
+                    this.boardConnectPromise = null;
+                    this.syncQuickSaveButton();
+                });
+            this.syncQuickSaveButton();
+        }
+        handleBoardConnect () {
+            this.boardNextConnectAt = 0;
+            this.syncBoardConnection(true);
+        }
+        async handleBoardUpload () {
+            if (this.boardUploading) return;
+            this.boardUploading = true;
+            this.boardProgress = 0;
+            this.boardProgressPhase = '准备发送';
+            this.syncQuickSaveButton();
+            try {
+                const source = compileESP32(this.props.vm);
+                if (!this.boardBluetooth.connected) throw new Error('请先连接 ESP32。');
+                await this.boardBluetooth.uploadMain(source, (progress, phase) => {
+                    this.boardProgress = progress;
+                    this.boardProgressPhase = phase;
+                    this.syncQuickSaveButton();
+                });
+                this.showQuickSaveFeedback('已发送，开发板正在重启运行');
+            } catch (error) {
+                this.showQuickSaveFeedback(`发送失败：${error.message}`, null, true);
+            } finally {
+                this.boardUploading = false;
+                this.boardNextConnectAt = Date.now() + 3000;
+                this.boardConnectionState = this.boardBluetooth.connected ? 'connected' : 'disconnected';
+                this.syncQuickSaveButton();
+            }
         }
         async handleQuickSaveProject () {
             try {
@@ -593,6 +813,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         onRequestNewProject: PropTypes.func,
         onTelemetrySettingsClicked: PropTypes.func,
         projectTitle: PropTypes.string,
+        toolboxXML: PropTypes.string,
         vm: GUIComponent.WrappedComponent.propTypes.vm
     };
     const mapStateToProps = state => {
@@ -600,6 +821,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         return {
             loadingState: loadingState,
             projectTitle: state.scratchGui.projectTitle,
+            toolboxXML: state.scratchGui.toolbox.toolboxXML,
             vm: state.scratchGui.vm
         };
     };

@@ -1,9 +1,14 @@
 // Include the standard keyboard shortcuts in the edit menu
 // so they can be used within the app. Only needed on Mac.
-export default app => ([
+export default (app, enterBoardProgramming) => ([
     {
         label: 'App', // Always overridden by app name
         submenu: [{
+            label: '板上编程',
+            click: enterBoardProgramming
+        }, {
+            type: 'separator'
+        }, {
             label: 'Quit',
             accelerator: 'CmdOrCtrl+Q',
             click: () => app.quit()

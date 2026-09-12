@@ -13,6 +13,7 @@ extraResources: # copy the downloaded static assets to make sure they are availa
     to: static/
     filter:
       - "**/*"
+      - "!board-programming/bipes/**"
 mac:
   category: public.app-category.education
   entitlements: buildResources/entitlements.mac.plist
@@ -22,6 +23,8 @@ mac:
         This app requires camera access when using the video sensing blocks.
     NSMicrophoneUsageDescription: >-
         This app requires microphone access when recording sounds or detecting loudness.
+    NSBluetoothAlwaysUsageDescription: >-
+        板上编程需要通过蓝牙连接开发板并发送 MicroPython 程序。
   gatekeeperAssess: true
   hardenedRuntime: true
   icon: buildResources/ScratchDesktop.icns
