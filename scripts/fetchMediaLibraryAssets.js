@@ -1,4 +1,5 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const https = require('https');
 const path = require('path');
 const util = require('util');
@@ -58,6 +59,14 @@ const collectAssets = function (dest) {
 
 const connectionPool = [];
 
+const isCached = function (md5) {
+    const assetPath = path.resolve(OUT_PATH, md5);
+    if (!fs.existsSync(assetPath)) return false;
+    const hash = crypto.createHash('md5').update(fs.readFileSync(assetPath))
+        .digest('hex');
+    return hash === md5.split('.')[0];
+};
+
 const fetchAsset = function (md5, callback) {
     const myAgent = connectionPool.pop() || new https.Agent({keepAlive: true});
     const getOptions = {
@@ -66,33 +75,40 @@ const fetchAsset = function (md5, callback) {
         agent: myAgent
     };
     const urlHuman = `//${getOptions.host}${getOptions.path}`;
-    https.get(getOptions, response => {
+    const request = https.get(getOptions, response => {
         if (response.statusCode !== 200) {
             callback(new Error(`Request failed: status code ${response.statusCode} for ${urlHuman}`));
+            response.resume();
             return;
         }
 
         const stream = fs.createWriteStream(path.resolve(OUT_PATH, md5), {encoding: 'binary'});
         stream.on('error', callback);
-        response.on('data', chunk => {
-            stream.write(chunk);
-        });
-        response.on('end', () => {
+        response.on('error', callback);
+        stream.on('finish', () => {
+            if (!isCached(md5)) {
+                callback(new Error(`Downloaded asset failed verification: ${md5}`));
+                return;
+            }
             connectionPool.push(myAgent);
-            stream.end();
             console.log(`Fetched ${urlHuman}`);
             callback();
         });
+        response.pipe(stream);
     });
+    request.on('error', callback);
 };
 
 const fetchAllAssets = function () {
     const allAssets = collectAssets(new Set());
     console.log(`Total library assets: ${allAssets.size}`);
+    const missingAssets = [...allAssets].filter(md5 => !isCached(md5));
+    console.log(`Cached: ${allAssets.size - missingAssets.length}; to fetch: ${missingAssets.length}`);
 
-    async.forEachLimit(allAssets, NUM_SIMULTANEOUS_DOWNLOADS, fetchAsset, err => {
+    async.forEachLimit(missingAssets, NUM_SIMULTANEOUS_DOWNLOADS, fetchAsset, err => {
         if (err) {
             console.error(`Fetch failed:\n${describe(err)}`);
+            process.exitCode = 1;
         } else {
             console.log('Fetch succeeded.');
         }

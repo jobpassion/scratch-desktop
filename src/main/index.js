@@ -569,10 +569,11 @@ ipcMain.on('open-privacy-policy-window', () => {
 // start loading initial project data before the GUI needs it so the load seems faster
 const initialProjectDataPromise = (async () => {
     let projectPath;
+    const openedFromArgument = argv._.length > 0;
     if (argv._.length > 1) {
         log.warn(`Expected 1 command line argument but received ${argv._.length}.`);
     }
-    if (argv._.length > 0) {
+    if (openedFromArgument) {
         projectPath = argv._[argv._.length - 1];
     } else {
         projectPath = getLastProjectPath();
@@ -587,11 +588,17 @@ const initialProjectDataPromise = (async () => {
         return projectData;
     } catch (e) {
         log.error(`Error loading project data: ${e}`);
-        dialog.showMessageBox(_windows.main, {
-            type: 'error',
-            title: 'Failed to load project',
-            message: `Could not load project from file:\n${projectPath}`,
-            detail: e.message
+        if (!openedFromArgument && e.code === 'ENOENT') {
+            projectStore.delete(lastProjectPathKey);
+            return;
+        }
+        app.whenReady().then(() => {
+            dialog.showMessageBox(_windows.main, {
+                type: 'error',
+                title: 'Failed to load project',
+                message: `Could not load project from file:\n${projectPath}`,
+                detail: e.message
+            });
         });
     }
     // load failed: initial project data undefined

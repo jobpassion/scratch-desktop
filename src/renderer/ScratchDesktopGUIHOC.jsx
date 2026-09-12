@@ -36,6 +36,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
     const longPressDelay = 700;
     const longPressMoveTolerance = 8;
     const speechDebugPrefix = '[block-speech]';
+    const categorySpeechDebugPrefix = '[category-speech]';
     const getBlocklyMainWorkspace = () => {
         if (window.Blockly && window.Blockly.getMainWorkspace) {
             return window.Blockly.getMainWorkspace();
@@ -66,8 +67,11 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 'applyCustomMenuLogo',
                 'cancelPendingBlockSpeech',
                 'createSpeechTextForBlock',
+                'createSpeechTextForCategory',
                 'findBlockForEventTarget',
+                'findCategoryElementForEventTarget',
                 'handleQuickSaveProject',
+                'handleCategoryImmediateSpeech',
                 'handleGlobalPointerMove',
                 'handleGlobalPointerUp',
                 'handleWorkspaceImmediateSpeech',
@@ -76,10 +80,14 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 'removeQuickSaveButton',
                 'removeQuickSaveFeedback',
                 'setupBlockSpeechListeners',
+                'setupCategorySpeechListeners',
                 'showQuickSaveFeedback',
+                'speakCategory',
+                'speakText',
                 'syncQuickSaveButton',
                 'speakBlock',
                 'tearDownBlockSpeechListeners',
+                'tearDownCategorySpeechListeners',
                 'handleSetTitleFromSave',
                 'handleStorageInit',
                 'handleUpdateProjectTitle'
@@ -115,17 +123,24 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                         this.props.onRequestNewProject();
                     }
                 );
-            });
+            })
+                .catch(error => {
+                    console.error('Failed to get initial project data:', error);
+                    this.props.onHasInitialProject(false, this.props.loadingState);
+                    this.props.onLoadingCompleted();
+                });
         }
         componentDidMount () {
             ipcRenderer.on('setTitleFromSave', this.handleSetTitleFromSave);
             this.applyCustomMenuLogo();
             this.syncQuickSaveButton();
             this.setupBlockSpeechListeners();
+            this.setupCategorySpeechListeners();
             this.logoObserver = window.setInterval(() => {
                 this.applyCustomMenuLogo();
                 this.syncQuickSaveButton();
                 this.setupBlockSpeechListeners();
+                this.setupCategorySpeechListeners();
             }, 500);
             window.addEventListener('mousemove', this.handleGlobalPointerMove, true);
             window.addEventListener('mouseup', this.handleGlobalPointerUp, true);
@@ -136,6 +151,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             window.removeEventListener('mousemove', this.handleGlobalPointerMove, true);
             window.removeEventListener('mouseup', this.handleGlobalPointerUp, true);
             this.tearDownBlockSpeechListeners();
+            this.tearDownCategorySpeechListeners();
             this.removeQuickSaveButton();
             this.removeQuickSaveFeedback();
         }
@@ -205,6 +221,27 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 console.log(`${speechDebugPrefix} listeners detached`);
             }
         }
+        setupCategorySpeechListeners () {
+            const toolboxElement = document.querySelector('.blocklyToolboxDiv');
+            if (!toolboxElement) {
+                console.log(`${categorySpeechDebugPrefix} toolbox not ready`);
+                return;
+            }
+            if (this.categorySpeechToolbox === toolboxElement) {
+                return;
+            }
+            this.tearDownCategorySpeechListeners();
+            toolboxElement.addEventListener('mouseup', this.handleCategoryImmediateSpeech, true);
+            this.categorySpeechToolbox = toolboxElement;
+            console.log(`${categorySpeechDebugPrefix} listener attached`);
+        }
+        tearDownCategorySpeechListeners () {
+            if (this.categorySpeechToolbox) {
+                this.categorySpeechToolbox.removeEventListener('mouseup', this.handleCategoryImmediateSpeech, true);
+                this.categorySpeechToolbox = null;
+                console.log(`${categorySpeechDebugPrefix} listener detached`);
+            }
+        }
         handleWorkspaceImmediateSpeech (event) {
             if (event.button !== 0) {
                 console.log(`${speechDebugPrefix} ignored non-left immediate speech`);
@@ -217,6 +254,19 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             }
             console.log(`${speechDebugPrefix} immediate speech triggered`, block.type, block.id);
             this.speakBlock(block);
+        }
+        handleCategoryImmediateSpeech (event) {
+            if (event.button !== 0) {
+                console.log(`${categorySpeechDebugPrefix} ignored non-left click`);
+                return;
+            }
+            const categoryElement = this.findCategoryElementForEventTarget(event.target);
+            if (!categoryElement) {
+                console.log(`${categorySpeechDebugPrefix} ignored, no category item`);
+                return;
+            }
+            console.log(`${categorySpeechDebugPrefix} speech triggered`);
+            this.speakCategory(categoryElement);
         }
         handleWorkspacePointerDown (event) {
             if (event.button !== 0) {
@@ -289,6 +339,12 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             console.log(`${speechDebugPrefix} workspace missing while resolving block`);
             return null;
         }
+        findCategoryElementForEventTarget (target) {
+            if (!target || !target.closest) {
+                return null;
+            }
+            return target.closest('.scratchCategoryMenuItem');
+        }
         createSpeechTextForBlock (block) {
             const rawText = block.toString(null, '空白')
                 .replace(/\s+/g, ' ')
@@ -320,20 +376,50 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             });
             return speechText;
         }
+        createSpeechTextForCategory (categoryElement) {
+            const labelElement = categoryElement &&
+                categoryElement.querySelector('.scratchCategoryMenuItemLabel');
+            const rawText = labelElement && labelElement.textContent ?
+                labelElement.textContent.replace(/\s+/g, ' ').trim() :
+                '';
+            if (!rawText) {
+                return '';
+            }
+            const speechText = rawText
+                .replace(/扩展$/u, '扩展积木')
+                .replace(/\s+/g, ' ')
+                .trim();
+            console.log(`${categorySpeechDebugPrefix} text generated`, {
+                rawText,
+                speechText
+            });
+            return speechText;
+        }
+        speakText (text, debugPrefix) {
+            console.log(`${debugPrefix} invoking ipc`, text);
+            ipcRenderer.invoke('speak-block-text', {text})
+                .then(result => {
+                    console.log(`${debugPrefix} ipc result`, result);
+                })
+                .catch(error => {
+                    console.error(`${debugPrefix} ipc failed`, error);
+                });
+        }
         speakBlock (block) {
             const text = this.createSpeechTextForBlock(block);
             if (!text) {
                 console.log(`${speechDebugPrefix} skipped empty text`, block.type, block.id);
                 return;
             }
-            console.log(`${speechDebugPrefix} invoking ipc`, text);
-            ipcRenderer.invoke('speak-block-text', {text})
-                .then(result => {
-                    console.log(`${speechDebugPrefix} ipc result`, result);
-                })
-                .catch(error => {
-                    console.error(`${speechDebugPrefix} ipc failed`, error);
-                });
+            this.speakText(text, speechDebugPrefix);
+        }
+        speakCategory (categoryElement) {
+            const text = this.createSpeechTextForCategory(categoryElement);
+            if (!text) {
+                console.log(`${categorySpeechDebugPrefix} skipped empty text`);
+                return;
+            }
+            this.speakText(text, categorySpeechDebugPrefix);
         }
         removeQuickSaveButton () {
             const quickSaveButton = document.getElementById('desktop-quick-save-button');

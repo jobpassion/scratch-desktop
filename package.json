@@ -13,6 +13,8 @@
     "compile:main": "webpack --config webpack.main.js",
     "compile": "npm run compile:renderer && npm run compile:main",
     "fetch": "rimraf ./static/fetched/ && mkdirp ./static/fetched/ && node ./scripts/fetchMediaLibraryAssets.js",
+    "fetch:missing": "mkdirp ./static/fetched/ && node ./scripts/fetchMediaLibraryAssets.js",
+    "package:mac": "npm run fetch:missing && npm run build:dev",
     "build": "npm run build:dev",
     "build:dev": "cross-env NODE_ENV=production npm run compile && npm run doBuild -- --mode=dev",
     "build:dir": "cross-env NODE_ENV=production npm run compile && npm run doBuild -- --mode=dir",
