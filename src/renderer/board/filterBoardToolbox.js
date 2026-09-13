@@ -11,7 +11,8 @@ const BLOCKS = {
         'operator_and', 'operator_or', 'operator_not', 'operator_mod',
         'operator_round', 'operator_join', 'operator_length', 'operator_contains', 'operator_letter_of'
     ]),
-    esp32gpio: new Set(['esp32gpio_setOnboardLed', 'esp32gpio_setDigital', 'esp32gpio_readDigital'])
+    esp32gpio: new Set(['esp32gpio_setOnboardLed', 'esp32gpio_setDigital', 'esp32gpio_readDigital',
+        'esp32gpio_printText', 'esp32gpio_writeAnalog', 'esp32gpio_readAnalog'])
 };
 
 const filterBoardToolbox = (source, boardMode) => {

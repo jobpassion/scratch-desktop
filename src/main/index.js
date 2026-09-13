@@ -10,6 +10,7 @@ import argv from './argv';
 import {getFilterForExtension} from './FileFilters';
 import telemetry from './ScratchDesktopTelemetry';
 import MacOSMenu from './MacOSMenu';
+import startBoardSimulationDocker from './BoardSimulationDocker';
 import log from '../common/log.js';
 import packageJson from '../../package.json';
 
@@ -48,6 +49,123 @@ const projectStore = new ElectronStore({
 });
 const lastProjectPathKey = 'lastProjectPath';
 let currentSpeechProcess = null;
+let boardSimulationWindow = null;
+let boardSimulationDockerPromise = null;
+let osxMenu = null;
+let boardSimulationMenu = null;
+
+const captureBoardSimulation = async () => {
+    if (!boardSimulationWindow || boardSimulationWindow.isDestroyed()) return null;
+    if (boardSimulationWindow.webContents.isLoadingMainFrame()) return null;
+    const content = await boardSimulationWindow.webContents.executeJavaScript(`
+        new Promise((resolve, reject) => {
+            const buttons = document.querySelectorAll('.file-explorer-header-actions button');
+            const saveButton = buttons[buttons.length - 1];
+            if (!saveButton) return reject(new Error('找不到 Velxio 保存按钮。'));
+            const original = URL.createObjectURL;
+            const originalClick = HTMLAnchorElement.prototype.click;
+            const restore = () => {
+                URL.createObjectURL = original;
+                HTMLAnchorElement.prototype.click = originalClick;
+            };
+            const timer = setTimeout(() => {
+                restore();
+                reject(new Error('读取仿真电路超时。'));
+            }, 5000);
+            HTMLAnchorElement.prototype.click = function () {
+                if (this.download.endsWith('.vlx')) return;
+                return originalClick.call(this);
+            };
+            URL.createObjectURL = function (blob) {
+                if (blob.type === 'application/json') {
+                    blob.text().then(text => {
+                        clearTimeout(timer);
+                        restore();
+                        resolve(text);
+                    }, error => {
+                        restore();
+                        reject(error);
+                    });
+                }
+                return original.call(this, blob);
+            };
+            try {
+                saveButton.click();
+            } catch (error) {
+                clearTimeout(timer);
+                restore();
+                reject(error);
+            }
+        })
+    `);
+    return content;
+};
+
+const loadBoardSimulation = async (webContents, snapshot) => {
+    const payload = Buffer.from(JSON.stringify(snapshot)).toString('base64');
+    await webContents.executeJavaScript(`
+        new Promise((resolve, reject) => {
+            const dismissNotices = () => {
+                document.querySelectorAll('.velxio-news-ok, .gh-star-banner__close')
+                    .forEach(button => button.click());
+            };
+            let attempts = 0;
+            const timer = setInterval(() => {
+                dismissNotices();
+                const input = document.querySelector('input[type="file"][accept*=".vlx"]');
+                if (!input) {
+                    if (++attempts < 50) return;
+                    clearInterval(timer);
+                    reject(new Error('Velxio 未准备好加载电路。'));
+                    return;
+                }
+                const viewButtons = document.querySelectorAll('.view-mode-toggle button');
+                if (viewButtons.length < 4) {
+                    if (++attempts < 50) return;
+                    clearInterval(timer);
+                    reject(new Error('Velxio 未准备好切换电路视图。'));
+                    return;
+                }
+                clearInterval(timer);
+                viewButtons[viewButtons.length - 1].click();
+                const bytes = Uint8Array.from(atob('${payload}'), char => char.charCodeAt(0));
+                const file = new File([bytes], 'scratch-board.vlx', {type: 'application/json'});
+                const transfer = new DataTransfer();
+                transfer.items.add(file);
+                input.files = transfer.files;
+                input.dispatchEvent(new Event('change', {bubbles: true}));
+                setTimeout(() => {
+                    dismissNotices();
+                    let runAttempts = 0;
+                    const runTimer = setInterval(() => {
+                        dismissNotices();
+                        const boardList = document.querySelector('.file-explorer-list');
+                        const runButton = document.querySelector('button.tb-btn-run');
+                        if (boardList && boardList.textContent.includes('ESP32') &&
+                            runButton && !runButton.disabled) {
+                            clearInterval(runTimer);
+                            runButton.click();
+                            let startAttempts = 0;
+                            const startTimer = setInterval(() => {
+                                const stopButton = document.querySelector('button.tb-btn-stop');
+                                if (stopButton && !stopButton.disabled) {
+                                    clearInterval(startTimer);
+                                    resolve();
+                                } else if (++startAttempts >= 360) {
+                                    clearInterval(startTimer);
+                                    reject(new Error('ESP32 未进入运行状态，请检查仿真窗口中的输出和电路检查结果。'));
+                                }
+                            }, 250);
+                        } else if (++runAttempts >= 100) {
+                            clearInterval(runTimer);
+                            reject(new Error('Velxio 未能载入 ESP32 程序。'));
+                        }
+                    }, 100);
+                }, 200);
+            }, 100);
+        })
+    `);
+};
 
 const getWindowIcon = () => {
     if (isDevelopment && fs.existsSync(developmentIconPath)) {
@@ -438,7 +556,19 @@ const createMainWindow = () => {
         }
     });
 
-    webContents.session.on('will-download', (willDownloadEvent, downloadItem) => {
+    webContents.session.on('will-download', (willDownloadEvent, downloadItem, sourceWebContents) => {
+        if (boardSimulationWindow && !boardSimulationWindow.isDestroyed() &&
+            sourceWebContents === boardSimulationWindow.webContents &&
+            path.extname(downloadItem.getFilename()).toLowerCase() === '.vlx') {
+            willDownloadEvent.preventDefault();
+            captureBoardSimulation().then(content => {
+                if (_windows.main && !_windows.main.isDestroyed()) {
+                    _windows.main.webContents.send('board-simulation-snapshot', content, true);
+                }
+            })
+                .catch(error => log.warn(`Cannot save board simulation: ${error.message}`));
+            return;
+        }
         const isProjectSave = getIsProjectSave(downloadItem);
         const itemPath = downloadItem.getFilename();
         const baseName = path.basename(itemPath);
@@ -528,9 +658,13 @@ const createMainWindow = () => {
 };
 
 if (process.platform === 'darwin') {
-    const osxMenu = Menu.buildFromTemplate(MacOSMenu(app, () => {
+    const onBoardProgramming = () => {
         if (_windows.main) _windows.main.webContents.send('enter-board-programming');
-    }));
+    };
+    osxMenu = Menu.buildFromTemplate(MacOSMenu(app, onBoardProgramming));
+    const simulationTemplate = MacOSMenu(app, onBoardProgramming);
+    simulationTemplate[1].submenu = simulationTemplate[1].submenu.slice(3);
+    boardSimulationMenu = Menu.buildFromTemplate(simulationTemplate);
     Menu.setApplicationMenu(osxMenu);
 } else {
     // disable menu for other platforms
@@ -649,6 +783,110 @@ const initialProjectDataPromise = (async () => {
 })(); // IIFE
 
 ipcMain.handle('get-initial-project-data', () => initialProjectDataPromise);
+ipcMain.handle('open-board-simulation', async (_event, {snapshot, serverUrl}) => {
+    if (!serverUrl) {
+        if (!boardSimulationDockerPromise) {
+            boardSimulationDockerPromise = startBoardSimulationDocker(status => {
+                if (_windows.main && !_windows.main.isDestroyed()) {
+                    _windows.main.webContents.send('board-simulation-status', status);
+                }
+            }).finally(() => {
+                boardSimulationDockerPromise = null;
+            });
+        }
+        serverUrl = await boardSimulationDockerPromise;
+    }
+    let editorUrl;
+    try {
+        const baseUrl = new URL(`${serverUrl.replace(/\/+$/, '')}/`);
+        if (!['http:', 'https:'].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password) {
+            throw new Error('invalid server URL');
+        }
+        editorUrl = new URL('editor?from=scratch', baseUrl).toString();
+    } catch (error) {
+        throw new Error('仿真服务器地址无效，请输入 http 或 https 地址。');
+    }
+    if (boardSimulationWindow && !boardSimulationWindow.isDestroyed()) {
+        boardSimulationWindow.focus();
+        return;
+    }
+    const simulationWindow = new BrowserWindow({
+        width: 1400,
+        height: 900,
+        show: false,
+        parent: _windows.main,
+        title: 'ESP32 仿真板',
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true,
+            preload: path.join(__dirname, 'BoardSimulationPreload.js')
+        }
+    });
+    simulationWindow.webContents.setUserAgent(
+        simulationWindow.webContents.getUserAgent().replace(packageJson.productName, 'ScratchDesktop')
+    );
+    simulationWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.code === devToolKey.code &&
+            input.alt === devToolKey.alt &&
+            input.control === devToolKey.control &&
+            input.meta === devToolKey.meta &&
+            input.shift === devToolKey.shift &&
+            input.type === 'keyDown' &&
+            !input.isAutoRepeat &&
+            !input.isComposing) {
+            event.preventDefault();
+            simulationWindow.webContents.openDevTools({mode: 'detach', activate: true});
+        }
+    });
+    boardSimulationWindow = simulationWindow;
+    if (process.platform === 'darwin') {
+        simulationWindow.on('focus', () => Menu.setApplicationMenu(boardSimulationMenu));
+        simulationWindow.on('blur', () => Menu.setApplicationMenu(osxMenu));
+    }
+    let closing = false;
+    simulationWindow.on('close', event => {
+        if (closing) return;
+        event.preventDefault();
+        closing = true;
+        captureBoardSimulation().then(content => {
+            if (_windows.main && !_windows.main.isDestroyed()) {
+                _windows.main.webContents.send('board-simulation-snapshot', content);
+            }
+        })
+            .catch(error => log.warn(`Cannot save board simulation: ${error.message}`))
+            .finally(() => {
+                simulationWindow.destroy();
+            });
+    });
+    simulationWindow.on('closed', () => {
+        if (boardSimulationWindow === simulationWindow) boardSimulationWindow = null;
+        if (process.platform === 'darwin') Menu.setApplicationMenu(osxMenu);
+    });
+    try {
+        const response = await fetch(editorUrl, {
+            signal: AbortSignal.timeout(3000)
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+        simulationWindow.destroy();
+        throw new Error('无法连接 Velxio 服务器，请检查地址和服务状态。');
+    }
+    try {
+        await simulationWindow.loadURL(editorUrl);
+        simulationWindow.show();
+        _windows.main.webContents.send('board-simulation-status', '正在加载电路并启动 ESP32…');
+        await loadBoardSimulation(simulationWindow.webContents, snapshot);
+        simulationWindow.setTitle('ESP32 仿真板 · 运行中');
+    } catch (error) {
+        if (!simulationWindow.isVisible()) simulationWindow.destroy();
+        throw new Error(`仿真启动失败：${error.message}`);
+    }
+});
+ipcMain.handle('capture-board-simulation', () => captureBoardSimulation());
+ipcMain.handle('close-board-simulation', () => {
+    if (boardSimulationWindow && !boardSimulationWindow.isDestroyed()) boardSimulationWindow.destroy();
+});
 ipcMain.handle('quick-save-project', async (_event, {projectData, projectTitle}) => {
     const savePath = getDefaultProjectPath(projectTitle);
     await fs.ensureDir(path.dirname(savePath));

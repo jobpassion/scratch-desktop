@@ -43,6 +43,11 @@ export const expression = (blocks, block, context) => {
         if (!context.pins.has(pin)) throw new Error('ESP32 引脚设置无效。');
         return `Pin(${pin}, Pin.IN).value()`;
     }
+    case 'esp32gpio_readAnalog': {
+        const pin = String(field(block, 'PIN'));
+        if (!context.analogPins.has(pin)) throw new Error('ESP32 模拟输入引脚无效。');
+        return `_read_analog(${pin})`;
+    }
     case 'operator_add': return binary('NUM1', 'NUM2', '+');
     case 'operator_subtract': return binary('NUM1', 'NUM2', '-');
     case 'operator_multiply': return binary('NUM1', 'NUM2', '*');

@@ -30,6 +30,7 @@
     "url": "git+ssh://git@github.com/scratchfoundation/scratch-desktop.git"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "source-map-support": "0.5.19"
   },
   "devDependencies": {

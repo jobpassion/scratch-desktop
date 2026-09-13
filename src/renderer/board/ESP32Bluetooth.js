@@ -11,6 +11,9 @@ class ESP32Bluetooth {
         this.tx = null;
         this.received = '';
         this.waiters = [];
+        this.rawMode = false;
+        this.onOutput = null;
+        this.decoder = new TextDecoder();
         this.onNotification = this.onNotification.bind(this);
     }
 
@@ -19,8 +22,13 @@ class ESP32Bluetooth {
     }
 
     onNotification (event) {
-        this.received += new TextDecoder().decode(event.target.value);
-        this.waiters.forEach(waiter => waiter());
+        const chunk = this.decoder.decode(event.target.value, {stream: true});
+        if (this.rawMode) {
+            this.received += chunk;
+            this.waiters.forEach(waiter => waiter());
+        } else if (this.onOutput && chunk) {
+            this.onOutput(chunk);
+        }
     }
 
     async connect (requestPermission = false) {
@@ -96,6 +104,7 @@ class ESP32Bluetooth {
     }
 
     async enterRawREPL () {
+        this.rawMode = true;
         this.received = '';
         await this.write('\r\x03\x03\r\x01');
         await this.waitFor('raw REPL; CTRL-B to exit\r\n>');
@@ -174,7 +183,12 @@ class ESP32Bluetooth {
             }
             throw error;
         } finally {
-            if (this.connected) await this.write('\x02');
+            try {
+                if (this.connected) await this.write('\x02');
+            } finally {
+                this.rawMode = false;
+                this.received = '';
+            }
         }
         await this.write('\x04');
         this.device.gatt.disconnect();

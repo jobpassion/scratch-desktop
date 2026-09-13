@@ -4,6 +4,7 @@ const PINS = new Set([
     '2', '4', '5', '12', '13', '14', '15', '16', '17', '18', '19',
     '21', '22', '23', '25', '26', '27', '32', '33'
 ]);
+const ANALOG_PINS = new Set(['32', '33', '34', '35', '36', '39']);
 
 const variableId = block => block.fields && block.fields.VARIABLE && block.fields.VARIABLE.id;
 const safeSymbol = id => Array.from(String(id))
@@ -36,6 +37,15 @@ const compileStack = (blocks, firstId, indent, context, seen = new Set()) => {
             const level = String(field(block, 'VALUE'));
             if (!PINS.has(pin) || !['0', '1'].includes(level)) throw new Error('ESP32 引脚或电平设置无效。');
             lines.push(`${indent}Pin(${pin}, Pin.OUT).value(${level})`);
+            break;
+        }
+        case 'esp32gpio_printText':
+            lines.push(`${indent}print(${value('TEXT')})`);
+            break;
+        case 'esp32gpio_writeAnalog': {
+            const pin = String(field(block, 'PIN'));
+            if (!PINS.has(pin)) throw new Error('ESP32 PWM 输出引脚无效。');
+            lines.push(`${indent}_write_pwm(${pin}, ${value('VALUE')})`);
             break;
         }
         case 'control_wait': lines.push(`${indent}sleep(${value('DURATION')})`); break;
@@ -126,6 +136,7 @@ const compileESP32 = vm => {
         parameters,
         procedures,
         pins: PINS,
+        analogPins: ANALOG_PINS,
         variable: block => {
             const variable = variables.get(variableId(block));
             if (!variable) throw new Error(`找不到变量“${field(block, 'VARIABLE')}”。`);
@@ -152,9 +163,21 @@ const compileESP32 = vm => {
     if (scripts.length > 1) throw new Error('第一版板上程序只能有一组绿旗脚本，请合并后再发送。');
     const initializers = [...variables.values()].map(variable => `${variable.symbol} = ${literal(variable.initial)}`);
     return `${[
-        'from machine import Pin',
+        'from machine import Pin, ADC, PWM',
         'from time import sleep',
         'import random',
+        '_adc_inputs = {}',
+        'def _read_analog(pin):\n' +
+            '    if pin not in _adc_inputs:\n' +
+            '        adc = ADC(Pin(pin))\n' +
+            '        adc.atten(ADC.ATTN_11DB)\n' +
+            '        _adc_inputs[pin] = adc\n' +
+            '    return _adc_inputs[pin].read()',
+        '_pwm_outputs = {}',
+        'def _write_pwm(pin, value):\n' +
+            '    if pin not in _pwm_outputs:\n' +
+            '        _pwm_outputs[pin] = PWM(Pin(pin), freq=1000)\n' +
+            '    _pwm_outputs[pin].duty(max(0, min(1023, int(value))))',
         ...initializers,
         ...functions,
         ...scripts

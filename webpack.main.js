@@ -6,7 +6,8 @@ module.exports = makeConfig(
     {
         target: 'electron-main',
         entry: {
-            main: './src/main/index.js'
+            main: './src/main/index.js',
+            BoardSimulationPreload: './src/main/BoardSimulationPreload.js'
         },
         context: path.resolve(__dirname),
         externals: [

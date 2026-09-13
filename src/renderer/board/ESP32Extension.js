@@ -2,6 +2,7 @@ const PINS = [
     '2', '4', '5', '12', '13', '14', '15', '16', '17', '18', '19',
     '21', '22', '23', '25', '26', '27', '32', '33'
 ];
+const ANALOG_PINS = ['32', '33', '34', '35', '36', '39'];
 
 class ESP32Extension {
     getInfo () {
@@ -29,6 +30,31 @@ class ESP32Extension {
                     }
                 },
                 {
+                    opcode: 'writeAnalog',
+                    blockType: 'command',
+                    text: '将 GPIO [PIN] PWM 设为 [VALUE] (0-1023)',
+                    arguments: {
+                        PIN: {type: 'string', menu: 'pins', defaultValue: '23'},
+                        VALUE: {type: 'number', defaultValue: 512}
+                    }
+                },
+                {
+                    opcode: 'readAnalog',
+                    blockType: 'reporter',
+                    text: '读取 GPIO [PIN] 模拟值 (0-4095)',
+                    arguments: {
+                        PIN: {type: 'string', menu: 'analogPins', defaultValue: '32'}
+                    }
+                },
+                {
+                    opcode: 'printText',
+                    blockType: 'command',
+                    text: '打印 [TEXT]',
+                    arguments: {
+                        TEXT: {type: 'string', defaultValue: '你好，ESP32'}
+                    }
+                },
+                {
                     opcode: 'readDigital',
                     blockType: 'reporter',
                     text: '读取 GPIO [PIN]',
@@ -39,6 +65,7 @@ class ESP32Extension {
             ],
             menus: {
                 pins: {acceptReporters: false, items: PINS},
+                analogPins: {acceptReporters: false, items: ANALOG_PINS},
                 levels: {acceptReporters: false,
                     items: [
                         {text: '高电平', value: '1'},
@@ -57,6 +84,14 @@ class ESP32Extension {
     setOnboardLed () {}
 
     setDigital () {}
+
+    writeAnalog () {}
+
+    readAnalog () {
+        return 0;
+    }
+
+    printText () {}
 
     readDigital () {
         return 0;

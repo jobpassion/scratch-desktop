@@ -27,6 +27,7 @@ import yiyiMenuLogo from './assets/gemini-menu-logo.png';
 import ESP32Extension from './board/ESP32Extension';
 import compileESP32 from './board/compileESP32';
 import ESP32Bluetooth from './board/ESP32Bluetooth';
+import BoardSimulationProject from './board/BoardSimulationProject';
 import filterBoardToolbox from './board/filterBoardToolbox';
 
 /**
@@ -77,7 +78,13 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 'handleQuickSaveProject',
                 'enterBoardProgramming',
                 'handleBoardConnect',
+                'handleBoardSimulationImport',
+                'handleBoardSimulationOpen',
+                'handleBoardSimulationServer',
+                'handleBoardSimulationSnapshot',
+                'handleBoardSimulationStatus',
                 'handleBoardUpload',
+                'handleBoardOutput',
                 'handleCategoryImmediateSpeech',
                 'handleGlobalPointerMove',
                 'handleGlobalPointerUp',
@@ -92,6 +99,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 'speakCategory',
                 'speakText',
                 'syncBoardConnection',
+                'syncBoardOutput',
                 'syncQuickSaveButton',
                 'syncBoardToolbox',
                 'speakBlock',
@@ -103,6 +111,13 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             ]);
             this.boardMode = false;
             this.boardBluetooth = new ESP32Bluetooth();
+            this.boardBluetooth.onOutput = this.handleBoardOutput;
+            this.boardOutput = '';
+            this.boardSimulation = new BoardSimulationProject(this.props.vm,
+                () => ipcRenderer.invoke('capture-board-simulation'),
+                () => ipcRenderer.invoke('close-board-simulation'));
+            this.boardSimulationOpening = false;
+            this.boardSimulationStatus = '';
             this.boardConnectionState = 'disconnected';
             this.boardConnectPromise = null;
             this.boardNextConnectAt = 0;
@@ -158,8 +173,11 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         componentDidMount () {
             ipcRenderer.on('setTitleFromSave', this.handleSetTitleFromSave);
             ipcRenderer.on('enter-board-programming', this.enterBoardProgramming);
+            ipcRenderer.on('board-simulation-snapshot', this.handleBoardSimulationSnapshot);
+            ipcRenderer.on('board-simulation-status', this.handleBoardSimulationStatus);
             this.applyCustomMenuLogo();
             this.syncQuickSaveButton();
+            this.syncBoardOutput();
             this.syncBoardToolbox();
             this.setupBlockSpeechListeners();
             this.setupCategorySpeechListeners();
@@ -167,6 +185,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 this.applyCustomMenuLogo();
                 this.syncBoardConnection();
                 this.syncQuickSaveButton();
+                this.syncBoardOutput();
                 this.syncBoardToolbox();
                 this.setupBlockSpeechListeners();
                 this.setupCategorySpeechListeners();
@@ -177,6 +196,8 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         componentWillUnmount () {
             ipcRenderer.removeListener('setTitleFromSave', this.handleSetTitleFromSave);
             ipcRenderer.removeListener('enter-board-programming', this.enterBoardProgramming);
+            ipcRenderer.removeListener('board-simulation-snapshot', this.handleBoardSimulationSnapshot);
+            ipcRenderer.removeListener('board-simulation-status', this.handleBoardSimulationStatus);
             window.clearInterval(this.logoObserver);
             window.removeEventListener('mousemove', this.handleGlobalPointerMove, true);
             window.removeEventListener('mouseup', this.handleGlobalPointerUp, true);
@@ -184,6 +205,8 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             this.tearDownCategorySpeechListeners();
             this.removeQuickSaveButton();
             this.removeQuickSaveFeedback();
+            const output = document.getElementById('desktop-board-output');
+            if (output) output.remove();
         }
         applyCustomMenuLogo () {
             const logoImage = document.getElementById('logo_img');
@@ -460,7 +483,10 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             if (boardProgrammingButton) {
                 boardProgrammingButton.remove();
             }
-            ['desktop-board-connect-button', 'desktop-board-upload-button', 'desktop-board-status'].forEach(id => {
+            ['desktop-board-connect-button', 'desktop-board-upload-button', 'desktop-board-simulation-button',
+                'desktop-board-simulation-server-button',
+                'desktop-board-simulation-import-button',
+                'desktop-board-status'].forEach(id => {
                 const button = document.getElementById(id);
                 if (button) button.remove();
             });
@@ -579,7 +605,12 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 ['desktop-board-connect-button', connected ? 'ESP32 已连接' : connecting ? '连接中…' : '立即连接',
                     this.handleBoardConnect],
                 ['desktop-board-upload-button', this.boardUploading ? `发送中 ${this.boardProgress}%` :
-                    connected ? '发送到板上' : '连接后发送', this.handleBoardUpload]
+                    connected ? '发送到板上' : '连接后发送', this.handleBoardUpload],
+                ['desktop-board-simulation-button', this.boardSimulationStatus || '仿真板运行',
+                    this.handleBoardSimulationOpen],
+                ['desktop-board-simulation-server-button', '仿真服务设置', this.handleBoardSimulationServer],
+                ['desktop-board-simulation-import-button', '导入电路',
+                    this.handleBoardSimulationImport]
             ];
             boardButtons.forEach(([id, label, onClick]) => {
                 let button = document.getElementById(id);
@@ -596,8 +627,12 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 button.textContent = label;
                 if (id === 'desktop-board-connect-button') {
                     button.disabled = connected || connecting || this.boardUploading;
-                } else {
+                } else if (id === 'desktop-board-simulation-button') {
+                    button.disabled = this.boardSimulationOpening;
+                } else if (id === 'desktop-board-upload-button') {
                     button.disabled = !connected || this.boardUploading;
+                } else {
+                    button.disabled = this.boardUploading;
                 }
                 Object.assign(button.style, {
                     flexShrink: '0',
@@ -645,6 +680,73 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             }
             document.body.classList.toggle('desktop-board-mode', this.boardMode);
         }
+        handleBoardOutput (chunk) {
+            this.boardOutput = (this.boardOutput + chunk).slice(-20000);
+            const content = document.getElementById('desktop-board-output-content');
+            if (content) {
+                content.textContent = this.boardOutput;
+                content.scrollTop = content.scrollHeight;
+            }
+        }
+        syncBoardOutput () {
+            let panel = document.getElementById('desktop-board-output');
+            if (!this.boardMode) {
+                if (panel) panel.remove();
+                return;
+            }
+            if (panel) return;
+            panel = document.createElement('section');
+            panel.id = 'desktop-board-output';
+            Object.assign(panel.style, {
+                position: 'fixed',
+                right: '16px',
+                bottom: '16px',
+                zIndex: '1000',
+                width: '360px',
+                maxWidth: 'calc(100vw - 32px)',
+                height: '180px',
+                display: 'flex',
+                flexDirection: 'column',
+                background: '#20232a',
+                color: '#fff',
+                borderRadius: '8px',
+                boxShadow: '0 3px 15px #0005',
+                overflow: 'hidden'
+            });
+            const header = document.createElement('div');
+            header.textContent = '板上输出';
+            Object.assign(header.style, {
+                padding: '8px 12px', fontWeight: '700', background: '#343842'
+            });
+            const clear = document.createElement('button');
+            clear.type = 'button';
+            clear.textContent = '清空';
+            clear.setAttribute('aria-label', '清空板上输出');
+            Object.assign(clear.style, {
+                float: 'right', border: '0', background: 'transparent', color: '#fff', cursor: 'pointer'
+            });
+            clear.addEventListener('click', () => {
+                this.boardOutput = '';
+                const content = document.getElementById('desktop-board-output-content');
+                if (content) content.textContent = '';
+            });
+            header.appendChild(clear);
+            const content = document.createElement('pre');
+            content.id = 'desktop-board-output-content';
+            content.textContent = this.boardOutput;
+            Object.assign(content.style, {
+                flex: '1',
+                margin: '0',
+                padding: '10px 12px',
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                fontSize: '12px'
+            });
+            panel.appendChild(header);
+            panel.appendChild(content);
+            document.body.appendChild(panel);
+        }
         syncBoardToolbox () {
             const workspace = getBlocklyMainWorkspace();
             if (!workspace || !this.props.toolboxXML) return;
@@ -674,6 +776,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             if (this.boardMode) this.boardNextConnectAt = 0;
             this.syncBoardConnection();
             this.syncQuickSaveButton();
+            this.syncBoardOutput();
             this.syncBoardToolbox();
             if (this.boardMode) this.showQuickSaveFeedback('板上模式：使用绿旗、控制和 ESP32 基础 IO 积木');
         }
@@ -708,6 +811,120 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             this.boardNextConnectAt = 0;
             this.syncBoardConnection(true);
         }
+        handleBoardSimulationImport () {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.vlx,application/json';
+            input.addEventListener('change', async () => {
+                if (!input.files || !input.files[0]) return;
+                try {
+                    const snapshot = JSON.parse(await input.files[0].text());
+                    this.boardSimulation.setSnapshot(snapshot);
+                    this.syncQuickSaveButton();
+                    this.showQuickSaveFeedback('仿真电路已绑定，请保存 Scratch 作品');
+                } catch (error) {
+                    this.showQuickSaveFeedback(`导入仿真电路失败：${error.message}`, null, true);
+                }
+            });
+            input.click();
+        }
+        async handleBoardSimulationServer () {
+            const saved = window.localStorage.getItem('board-simulation-url') || '';
+            const input = await new Promise(resolve => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:100000;' +
+                    'display:flex;align-items:center;justify-content:center';
+                const form = document.createElement('form');
+                form.style.cssText = 'background:white;padding:24px;border-radius:12px;' +
+                    'min-width:360px;display:grid;gap:12px';
+                const label = document.createElement('label');
+                label.textContent = 'Velxio 服务器地址';
+                const field = document.createElement('input');
+                field.type = 'url';
+                field.required = true;
+                field.value = saved || 'http://';
+                field.style.cssText = 'padding:10px;font-size:16px';
+                const actions = document.createElement('div');
+                actions.style.cssText = 'display:flex;justify-content:flex-end;gap:12px';
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.textContent = '取消';
+                const local = document.createElement('button');
+                local.type = 'button';
+                local.textContent = '使用本机 Docker';
+                const save = document.createElement('button');
+                save.type = 'submit';
+                save.textContent = '保存';
+                const finish = value => {
+                    overlay.remove();
+                    resolve(value);
+                };
+                cancel.addEventListener('click', () => finish(null));
+                local.addEventListener('click', () => finish('local'));
+                form.addEventListener('submit', event => {
+                    event.preventDefault();
+                    finish(field.value);
+                });
+                actions.append(local, cancel, save);
+                form.append(label, field, actions);
+                overlay.append(form);
+                document.body.append(overlay);
+                field.focus();
+            });
+            if (input === null) return null;
+            if (input === 'local') {
+                window.localStorage.removeItem('board-simulation-url');
+                this.showQuickSaveFeedback('已切换到本机 Docker 仿真');
+                return null;
+            }
+            try {
+                const url = new URL(input.trim());
+                if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+                    throw new Error('invalid server URL');
+                }
+                const normalized = url.toString().replace(/\/+$/, '');
+                window.localStorage.setItem('board-simulation-url', normalized);
+                this.showQuickSaveFeedback('仿真服务器已设置', normalized);
+                return normalized;
+            } catch (error) {
+                this.showQuickSaveFeedback('服务器地址无效，请输入 http 或 https 地址', null, true);
+                return null;
+            }
+        }
+        async handleBoardSimulationOpen () {
+            if (this.boardSimulationOpening) return;
+            this.boardSimulationOpening = true;
+            this.boardSimulationStatus = '正在启动仿真…';
+            this.syncQuickSaveButton();
+            try {
+                const serverUrl = window.localStorage.getItem('board-simulation-url') || null;
+                const source = compileESP32(this.props.vm);
+                const snapshot = this.boardSimulation.buildRunSnapshot(source);
+                await ipcRenderer.invoke('open-board-simulation', {snapshot, serverUrl});
+            } catch (error) {
+                this.showQuickSaveFeedback(`打开仿真板失败：${error.message}`, null, true);
+            } finally {
+                this.boardSimulationOpening = false;
+                this.boardSimulationStatus = '';
+                this.syncQuickSaveButton();
+            }
+        }
+        handleBoardSimulationStatus (_event, status) {
+            this.boardSimulationStatus = status;
+            this.syncQuickSaveButton();
+        }
+        handleBoardSimulationSnapshot (_event, content, saveProject = false) {
+            try {
+                this.boardSimulation.setSnapshot(JSON.parse(content));
+                if (saveProject) {
+                    this.handleQuickSaveProject();
+                } else {
+                    this.showQuickSaveFeedback('仿真电路已更新，请保存 Scratch 作品');
+                }
+            } catch (error) {
+                this.showQuickSaveFeedback(`保存仿真电路失败：${error.message}`, null, true);
+            }
+        }
         async handleBoardUpload () {
             if (this.boardUploading) return;
             this.boardUploading = true;
@@ -727,9 +944,10 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 this.showQuickSaveFeedback(`发送失败：${error.message}`, null, true);
             } finally {
                 this.boardUploading = false;
-                this.boardNextConnectAt = Date.now() + 3000;
+                this.boardNextConnectAt = 0;
                 this.boardConnectionState = this.boardBluetooth.connected ? 'connected' : 'disconnected';
                 this.syncQuickSaveButton();
+                if (!this.boardBluetooth.connected) this.syncBoardConnection();
             }
         }
         async handleQuickSaveProject () {
