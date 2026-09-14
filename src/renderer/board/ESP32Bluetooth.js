@@ -76,6 +76,16 @@ class ESP32Bluetooth {
         }
     }
 
+    async refreshConnection () {
+        const device = this.device;
+        if (!device) throw new Error('请先连接 ESP32。');
+        if (this.tx) this.tx.removeEventListener('characteristicvaluechanged', this.onNotification);
+        this.rx = null;
+        this.tx = null;
+        if (device.gatt.connected) device.gatt.disconnect();
+        await this.connectDevice(device);
+    }
+
     waitFor (marker, timeout = 10000) {
         const matches = typeof marker === 'function' ? marker : received => received.includes(marker);
         if (matches(this.received)) return Promise.resolve(this.received);
@@ -106,7 +116,14 @@ class ESP32Bluetooth {
     async enterRawREPL () {
         this.rawMode = true;
         this.received = '';
-        await this.write('\r\x03\x03\r\x01');
+        try {
+            await this.write('\r\x03\x03\r\x01');
+        } catch (error) {
+            if (!/GATT Service no longer exists/i.test(error.message)) throw error;
+            await this.refreshConnection();
+            this.received = '';
+            await this.write('\r\x03\x03\r\x01');
+        }
         await this.waitFor('raw REPL; CTRL-B to exit\r\n>');
     }
 
