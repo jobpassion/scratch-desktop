@@ -8,7 +8,7 @@ const copyText = async text => {
         try {
             await navigator.clipboard.writeText(text);
             return;
-        } catch (error) {
+        } catch {
             // Fall back to the legacy copy path for non-secure remote Velxio servers.
         }
     }
