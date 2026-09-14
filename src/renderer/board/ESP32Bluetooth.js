@@ -97,6 +97,21 @@ class ESP32Bluetooth {
         throw lastError || new Error('请点击“立即连接”授权开发板。');
     }
 
+    async primeConnection (rx) {
+        try {
+            // A zero-length ATT write is valid and triggers the existing board-side
+            // _IRQ_GATTS_WRITE recovery without putting a character into the REPL.
+            await rx.writeValue(new Uint8Array(0));
+            console.info('[ESP32 蓝牙] 已发送空写连接握手');
+        } catch (error) {
+            // Older Chromium/macOS combinations may reject an empty BufferSource.
+            // A carriage return is a harmless empty REPL line and still proves the
+            // live RX connection to older board firmware.
+            console.info(`[ESP32 蓝牙] 空写连接握手失败，改用回车握手：${error.message}`);
+            await rx.writeValue(new Uint8Array([13]));
+        }
+    }
+
     async connectDevice (device) {
         try {
             const server = await device.gatt.connect();
@@ -109,6 +124,7 @@ class ESP32Bluetooth {
             this.device = device;
             this.rx = rx;
             this.tx = tx;
+            if (!this.rawMode) await this.primeConnection(rx);
         } catch (error) {
             device.gatt.disconnect();
             throw new Error(`连接开发板失败：${error.message}`);
