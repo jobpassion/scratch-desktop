@@ -1,4 +1,9 @@
 import {createHash} from 'crypto';
+import {ipcRenderer} from 'electron';
+
+ipcRenderer.on('board-bluetooth-debug', (_event, message) => {
+    console.info(`[ESP32 蓝牙] ${message}`);
+});
 
 const SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
@@ -21,6 +26,10 @@ class ESP32Bluetooth {
         return Boolean(this.device && this.device.gatt.connected && this.rx);
     }
 
+    get canAutoReconnect () {
+        return Boolean(this.device || (navigator.bluetooth && navigator.bluetooth.getDevices));
+    }
+
     onNotification (event) {
         const chunk = this.decoder.decode(event.target.value, {stream: true});
         if (this.rawMode) {
@@ -35,10 +44,23 @@ class ESP32Bluetooth {
         if (this.connected) return;
         if (!navigator.bluetooth) throw new Error('当前应用无法使用蓝牙。');
         if (requestPermission) {
-            const selected = await navigator.bluetooth.requestDevice({
-                filters: [{namePrefix: 'YY-Board'}, {namePrefix: 'MPY ESP32'}],
-                optionalServices: [SERVICE]
-            });
+            let selected;
+            const startedAt = Date.now();
+            console.info('[ESP32 蓝牙] 开始请求设备');
+            try {
+                selected = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [SERVICE]
+                });
+            } catch (error) {
+                console.info(`[ESP32 蓝牙] 设备请求失败：${Date.now() - startedAt} ms，` +
+                    `${error.name}：${error.message}`);
+                if (error.name === 'NotFoundError' && error.message.includes('requestDevice() chooser')) {
+                    throw new Error('蓝牙设备选择未完成，请确认开发板正在广播后重试。');
+                }
+                throw error;
+            }
+            console.info(`[ESP32 蓝牙] 已选择 ${selected.name || '未命名设备'}，开始连接`);
             await this.connectDevice(selected);
             return;
         }

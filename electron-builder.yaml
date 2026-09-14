@@ -28,7 +28,6 @@ mac:
   gatekeeperAssess: true
   hardenedRuntime: true
   icon: buildResources/ScratchDesktop.icns
-  provisioningProfile: build/AppStore_edu.mit.scratch.scratch-desktop.provisionprofile
   artifactName: "一一编程乐园 ${version}.${ext}"
   target:
     - dmg
@@ -37,6 +36,7 @@ dmg:
   title: "一一编程乐园 ${version}"
 mas:
   category: public.app-category.education
+  provisioningProfile: build/AppStore_edu.mit.scratch.scratch-desktop.provisionprofile
   entitlements: buildResources/entitlements.mas.plist
   entitlementsInherit: buildResources/entitlements.mas.inherit.plist
   hardenedRuntime: false

@@ -62,7 +62,12 @@ class BLEUART:
             self._advertise()
         elif event == _IRQ_GATTS_WRITE:
             conn_handle, value_handle = data
-            if conn_handle in self._connections and value_handle == self._rx_handle:
+            if value_handle == self._rx_handle:
+                # IMPORTANT: Some macOS connections deliver GATT writes without
+                # a recorded CENTRAL_CONNECT event. Do not restore the original
+                # `conn_handle in self._connections` guard: recover the live
+                # connection here so both REPL input and notifications work.
+                self._connections.add(conn_handle)
                 self._rx_buffer += self._ble.gatts_read(self._rx_handle)
                 if self._handler:
                     self._handler()

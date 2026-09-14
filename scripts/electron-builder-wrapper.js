@@ -69,7 +69,9 @@ const runBuilder = function (wrapperConfig, target) {
             // really this is "notarize only if we also sign"
             allArgs.push('--c.afterSign=scripts/afterSign.js');
         } else {
-            allArgs.push('--c.mac.identity=null');
+            // electron-builder 26 does not sign with identity "-" on its own.
+            allArgs.push('--c.mac.identity=-');
+            allArgs.push('--c.mac.sign=scripts/signLocalMac.js');
         }
     }
     if (!wrapperConfig.doPackage) {

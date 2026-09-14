@@ -203,6 +203,9 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             window.removeEventListener('mouseup', this.handleGlobalPointerUp, true);
             this.tearDownBlockSpeechListeners();
             this.tearDownCategorySpeechListeners();
+            if (this.boardToolboxWorkspace) {
+                this.boardToolboxWorkspace.updateToolbox = this.originalBoardUpdateToolbox;
+            }
             this.removeQuickSaveButton();
             this.removeQuickSaveFeedback();
             const output = document.getElementById('desktop-board-output');
@@ -659,8 +662,10 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 status.textContent = this.boardUploading ?
                     `ESP32：${this.boardProgressPhase} ${this.boardProgress}%` :
                     connected ? 'ESP32：已连接' : connecting ? 'ESP32：连接中…' :
-                        this.boardConnectionError && this.boardConnectionError.includes('授权') ?
-                            'ESP32：未授权，请点立即连接' : 'ESP32：未连接，自动重试中';
+                        this.boardConnectionError && !this.boardBluetooth.canAutoReconnect ?
+                            'ESP32：连接失败，请点立即连接' :
+                            this.boardBluetooth.canAutoReconnect ?
+                                'ESP32：未连接，自动重试中' : 'ESP32：未连接，请点立即连接';
                 status.title = this.boardConnectionError || status.textContent;
                 Object.assign(status.style, {
                     flexShrink: '0',
@@ -750,6 +755,17 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
         syncBoardToolbox () {
             const workspace = getBlocklyMainWorkspace();
             if (!workspace || !this.props.toolboxXML) return;
+            if (this.boardToolboxWorkspace !== workspace) {
+                if (this.boardToolboxWorkspace) {
+                    this.boardToolboxWorkspace.updateToolbox = this.originalBoardUpdateToolbox;
+                }
+                const updateToolbox = workspace.updateToolbox;
+                workspace.updateToolbox = source =>
+                    updateToolbox.call(workspace, filterBoardToolbox(source, this.boardMode));
+                this.originalBoardUpdateToolbox = updateToolbox;
+                this.boardToolboxWorkspace = workspace;
+                this.boardToolboxKey = null;
+            }
             if (this.boardVariableWorkspace !== workspace) {
                 const original = workspace.getToolboxCategoryCallback('VARIABLE');
                 if (original) {
@@ -768,7 +784,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             const source = this.props.toolboxXML;
             const key = `${this.boardMode}:${source}`;
             if (this.boardToolboxKey === key) return;
-            workspace.updateToolbox(filterBoardToolbox(source, this.boardMode));
+            workspace.updateToolbox(source);
             this.boardToolboxKey = key;
         }
         enterBoardProgramming () {
@@ -786,6 +802,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 this.boardConnectionState = 'connected';
                 return;
             }
+            if (!requestPermission && !this.boardBluetooth.canAutoReconnect) return;
             if (this.boardConnectPromise) return;
             this.boardConnectionState = 'disconnected';
             if (Date.now() < this.boardNextConnectAt) return;
@@ -800,6 +817,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                     this.boardConnectionState = 'disconnected';
                     this.boardConnectionError = error.message;
                     this.boardNextConnectAt = Date.now() + 5000;
+                    if (requestPermission) this.showQuickSaveFeedback(`连接失败：${error.message}`, null, true);
                 })
                 .finally(() => {
                     this.boardConnectPromise = null;

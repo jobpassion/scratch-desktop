@@ -42,6 +42,12 @@ const devToolKey = ((process.platform === 'darwin') ?
 
 // global window references prevent them from being garbage-collected
 const _windows = {};
+const traceBoardBluetooth = message => {
+    const main = _windows.main;
+    if (main && !main.isDestroyed()) {
+        main.webContents.send('board-bluetooth-debug', message);
+    }
+};
 const PORT = process.env.PORT || 8601;
 const developmentIconPath = path.join(process.cwd(), 'src/icon/ScratchDesktop.png');
 const projectStore = new ElectronStore({
@@ -338,6 +344,10 @@ const askForMediaAccess = mediaType => {
 };
 
 const handlePermissionRequest = async (webContents, permission, callback, details) => {
+    if (permission === 'bluetooth' || permission === 'bluetoothScanning' || permission === 'unknown') {
+        traceBoardBluetooth(`权限请求：${permission}，主窗口=${webContents === _windows.main.webContents}，` +
+            `主页面=${details.isMainFrame}，URL=${details.requestingUrl}`);
+    }
     if (webContents !== _windows.main.webContents) {
         // deny: request came from somewhere other than the main window's web contents
         return callback(false);
@@ -515,13 +525,19 @@ const createMainWindow = () => {
         title: `${packageJson.productName} ${packageJson.version}` // something like "Scratch 3.14"
     });
     const webContents = window.webContents;
-    webContents.session.setPermissionCheckHandler((requestingWebContents, permission) => (
-        requestingWebContents === webContents &&
-        (permission === 'bluetooth' || permission === 'bluetoothScanning' || permission === 'media')
-    ));
+    webContents.session.setPermissionCheckHandler((requestingWebContents, permission) => {
+        const allowed = requestingWebContents === webContents &&
+            (permission === 'bluetooth' || permission === 'bluetoothScanning' || permission === 'media');
+        if (permission === 'bluetooth' || permission === 'bluetoothScanning' || permission === 'unknown') {
+            traceBoardBluetooth(`权限检查：${permission}，主窗口=${requestingWebContents === webContents}，` +
+                `结果=${allowed ? '允许' : '拒绝'}`);
+        }
+        return allowed;
+    });
     let bluetoothChoice = null;
     webContents.on('select-bluetooth-device', (event, devices, callback) => {
         event.preventDefault();
+        traceBoardBluetooth(`设备选择事件：发现 ${devices.length} 个设备`);
         if (!bluetoothChoice) {
             bluetoothChoice = {devices: new Map(), callback, timer: null, showing: false};
             bluetoothChoice.timer = setTimeout(() => {
@@ -533,6 +549,7 @@ const createMainWindow = () => {
                 ));
                 if (bluetoothChoice === choice) {
                     bluetoothChoice = null;
+                    traceBoardBluetooth(available.length ? '设备选择：已找到 ESP32' : '设备选择：10 秒内未找到 ESP32');
                     choice.callback(available.length ? available[0].deviceId : '');
                 }
             }, 10000);
@@ -545,6 +562,7 @@ const createMainWindow = () => {
             const choice = bluetoothChoice;
             clearTimeout(choice.timer);
             bluetoothChoice = null;
+            traceBoardBluetooth(`设备选择：已找到 ${board.deviceName}`);
             choice.callback(board.deviceId);
         }
     });
