@@ -15,6 +15,18 @@ export default (app, enterBoardProgramming) => ([
         }]
     },
     {
+        label: 'File',
+        submenu: [{
+            label: '复制电路数据',
+            click: (_menuItem, browserWindow) => {
+                if (!browserWindow || browserWindow.isDestroyed()) return;
+                browserWindow.webContents.executeJavaScript(
+                    'window.__SCRATCH_COPY_VLX__ ? window.__SCRATCH_COPY_VLX__() : Promise.resolve(false)'
+                ).catch(() => {});
+            }
+        }]
+    },
+    {
         label: 'Edit',
         submenu: [
             {
