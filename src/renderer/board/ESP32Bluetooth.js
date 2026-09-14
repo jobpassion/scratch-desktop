@@ -8,6 +8,7 @@ ipcRenderer.on('board-bluetooth-debug', (_event, message) => {
 const SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const BOARD_PRINT_PREFIX = '__YY_PRINT__';
 
 class ESP32Bluetooth {
     constructor () {
@@ -18,6 +19,7 @@ class ESP32Bluetooth {
         this.waiters = [];
         this.rawMode = false;
         this.onOutput = null;
+        this.outputBuffer = '';
         this.decoder = new TextDecoder();
         this.onNotification = this.onNotification.bind(this);
     }
@@ -35,8 +37,22 @@ class ESP32Bluetooth {
         if (this.rawMode) {
             this.received += chunk;
             this.waiters.forEach(waiter => waiter());
-        } else if (this.onOutput && chunk) {
-            this.onOutput(chunk);
+        } else if (chunk) {
+            this.handleProgramOutput(chunk);
+        }
+    }
+
+    handleProgramOutput (chunk) {
+        this.outputBuffer += chunk;
+        let newline = this.outputBuffer.indexOf('\n');
+        while (newline >= 0) {
+            let line = this.outputBuffer.slice(0, newline);
+            this.outputBuffer = this.outputBuffer.slice(newline + 1);
+            if (line.endsWith('\r')) line = line.slice(0, -1);
+            if (line.startsWith(BOARD_PRINT_PREFIX) && this.onOutput) {
+                this.onOutput(`${line.slice(BOARD_PRINT_PREFIX.length)}\n`);
+            }
+            newline = this.outputBuffer.indexOf('\n');
         }
     }
 
@@ -87,6 +103,7 @@ class ESP32Bluetooth {
             const service = await server.getPrimaryService(SERVICE);
             const rx = await service.getCharacteristic(RX);
             const tx = await service.getCharacteristic(TX);
+            this.outputBuffer = '';
             await tx.startNotifications();
             tx.addEventListener('characteristicvaluechanged', this.onNotification);
             this.device = device;
@@ -138,6 +155,7 @@ class ESP32Bluetooth {
     async enterRawREPL () {
         this.rawMode = true;
         this.received = '';
+        this.outputBuffer = '';
         try {
             await this.write('\r\x03\x03\r\x01');
         } catch (error) {
@@ -227,6 +245,7 @@ class ESP32Bluetooth {
             } finally {
                 this.rawMode = false;
                 this.received = '';
+                this.outputBuffer = '';
             }
         }
         await this.write('\x04');

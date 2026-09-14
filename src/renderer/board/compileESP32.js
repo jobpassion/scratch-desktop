@@ -5,6 +5,7 @@ const PINS = new Set([
     '21', '22', '23', '25', '26', '27', '32', '33'
 ]);
 const ANALOG_PINS = new Set(['32', '33', '34', '35', '36', '39']);
+const BOARD_PRINT_PREFIX = '__YY_PRINT__';
 
 const variableId = block => block.fields && block.fields.VARIABLE && block.fields.VARIABLE.id;
 const safeSymbol = id => Array.from(String(id))
@@ -40,7 +41,7 @@ const compileStack = (blocks, firstId, indent, context, seen = new Set()) => {
             break;
         }
         case 'esp32gpio_printText':
-            lines.push(`${indent}print(${value('TEXT')})`);
+            lines.push(`${indent}_board_print(${value('TEXT')})`);
             break;
         case 'esp32gpio_writeAnalog': {
             const pin = String(field(block, 'PIN'));
@@ -166,6 +167,10 @@ const compileESP32 = vm => {
         'from machine import Pin, ADC, PWM',
         'from time import sleep',
         'import random',
+        `_board_print_prefix = ${literal(BOARD_PRINT_PREFIX)}`,
+        'def _board_print(value):\n' +
+            "    for line in str(value).split('\\n'):\n" +
+            '        print(_board_print_prefix + line)',
         '_adc_inputs = {}',
         'def _read_analog(pin):\n' +
             '    if pin not in _adc_inputs:\n' +
