@@ -10,6 +10,12 @@ const RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 const BOARD_PRINT_PREFIX = '__YY_PRINT__';
 
+const formatOutputTime = date => {
+    const pad = (value, length = 2) => String(value).padStart(length, '0');
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.` +
+        `${pad(date.getMilliseconds(), 3)}`;
+};
+
 class ESP32Bluetooth {
     constructor () {
         this.device = null;
@@ -50,7 +56,8 @@ class ESP32Bluetooth {
             this.outputBuffer = this.outputBuffer.slice(newline + 1);
             if (line.endsWith('\r')) line = line.slice(0, -1);
             if (line.startsWith(BOARD_PRINT_PREFIX) && this.onOutput) {
-                this.onOutput(`${line.slice(BOARD_PRINT_PREFIX.length)}\n`);
+                const time = formatOutputTime(new Date());
+                this.onOutput(`[${time}] ${line.slice(BOARD_PRINT_PREFIX.length)}\n`);
             }
             newline = this.outputBuffer.indexOf('\n');
         }
