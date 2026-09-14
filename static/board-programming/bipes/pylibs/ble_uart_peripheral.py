@@ -62,12 +62,13 @@ class BLEUART:
             self._advertise()
         elif event == _IRQ_GATTS_WRITE:
             conn_handle, value_handle = data
+            # IMPORTANT: Some macOS connections omit the CENTRAL_CONNECT event.
+            # A GATTS_WRITE can come from either a characteristic or descriptor
+            # (including the CCCD written when notifications are enabled), so
+            # any such write proves this is a live connection. Recover it before
+            # checking whether the write carries UART RX data.
+            self._connections.add(conn_handle)
             if value_handle == self._rx_handle:
-                # IMPORTANT: Some macOS connections deliver GATT writes without
-                # a recorded CENTRAL_CONNECT event. Do not restore the original
-                # `conn_handle in self._connections` guard: recover the live
-                # connection here so both REPL input and notifications work.
-                self._connections.add(conn_handle)
                 self._rx_buffer += self._ble.gatts_read(self._rx_handle)
                 if self._handler:
                     self._handler()
