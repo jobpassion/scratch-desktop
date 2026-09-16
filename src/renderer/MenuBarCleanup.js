@@ -1,6 +1,12 @@
 const hideDebugMenuItem = () => {
     const menuBars = document.querySelectorAll('[class*="menu-bar_menu-bar_"]');
     for (const menuBar of menuBars) {
+        const exactDebugItems = menuBar.querySelectorAll('[aria-label="Debug"]');
+        exactDebugItems.forEach(item => {
+            item.style.setProperty('display', 'none', 'important');
+            item.setAttribute('aria-hidden', 'true');
+        });
+
         const candidates = menuBar.querySelectorAll(
             '[class*="menu-bar_menu-bar-item_"], [class*="menu-bar_hoverable_"], button, [role="button"]'
         );
