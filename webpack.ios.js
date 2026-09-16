@@ -10,7 +10,11 @@ const makeConfig = require('./webpack.makeConfig.js');
 fsExtra.ensureDirSync('dist');
 
 const getModulePath = moduleName => path.dirname(require.resolve(`${moduleName}`));
-const template = fsExtra.readFileSync('src/renderer/index.html', {encoding: 'utf8'});
+const baseTemplate = fsExtra.readFileSync('src/renderer/index.html', {encoding: 'utf8'});
+const template = baseTemplate.replace(
+    '<meta charset="utf-8">',
+    '<meta charset="utf-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'
+);
 
 module.exports = makeConfig(
     {
