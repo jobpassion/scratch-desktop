@@ -45,5 +45,5 @@ Xcode 每次构建都会先执行 `npm run build:ios:web`，因此 JavaScript �
 ## 暂未处理
 
 - App Store 正式签名、App Icon 和商店素材。
-- 从“文件”App 直接双击 `.sb3` 唤起并导入；当前通过应用内“打开”按钮完成。
+- 从“文件”App 直接双击 `.sb3` 唤起并导入；当前通过 Scratch 文件菜单中的“从电脑中上传”选择文件。
 - iPhone 布局；当前 target 仅 iPad。

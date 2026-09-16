@@ -4,6 +4,7 @@ import WebKit
 final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private(set) var webView: WKWebView!
     private var bridge: WebBridge!
+    private var openedProjectBridge: OpenedProjectBridge!
 
     override func loadView() {
         let configuration = WKWebViewConfiguration()
@@ -12,7 +13,9 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
         bridge = WebBridge()
+        openedProjectBridge = OpenedProjectBridge()
         configuration.userContentController.add(bridge, name: "yiyiBridge")
+        configuration.userContentController.add(openedProjectBridge, name: "yiyiFileBridge")
 
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self

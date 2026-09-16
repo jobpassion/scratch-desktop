@@ -1,3 +1,4 @@
+import './ios/FileSync';
 import ReactDOM from 'react-dom';
 import log from '../common/log.js';
 
