@@ -37,8 +37,8 @@ input,
 
 /*
  * The desktop board controls are inserted into Scratch's menu bar at runtime.
- * On WKWebView they can inherit Scratch's icon font, which renders Chinese
- * labels as missing-glyph boxes. Force a native CJK-capable font on iPad.
+ * iOS Simulator/WKWebView may resolve system-ui to a font path that fails to
+ * render these dynamically-created Chinese labels. Prefer PingFang SC directly.
  */
 #desktop-quick-save-button,
 #desktop-board-programming-button,
@@ -49,7 +49,7 @@ input,
 #desktop-board-simulation-import-button,
 #desktop-board-status,
 #desktop-quick-save-feedback {
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif !important;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif !important;
     white-space: nowrap !important;
     letter-spacing: normal !important;
     text-transform: none !important;
