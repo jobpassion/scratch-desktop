@@ -2,9 +2,13 @@ import NativeBridge from './NativeBridge';
 
 const channelSubscriptions = new Map();
 const boardModeStorageKey = 'yiyi-board-programming-mode';
+let pendingInitialProjectTitle = null;
 
 const decodeProjectResult = result => {
     if (!result || !result.data) return undefined;
+    if (result.title) {
+        pendingInitialProjectTitle = result.title;
+    }
     return NativeBridge.base64ToBytes(result.data);
 };
 
@@ -180,6 +184,13 @@ const on = (channel, handler) => {
         channelSubscriptions.set(channel, handlers);
     }
     handlers.set(handler, unsubscribe);
+
+    if (channel === 'setTitleFromSave' && pendingInitialProjectTitle) {
+        const title = pendingInitialProjectTitle;
+        pendingInitialProjectTitle = null;
+        window.setTimeout(() => handler({}, {title}), 0);
+    }
+
     return ipcRenderer;
 };
 
