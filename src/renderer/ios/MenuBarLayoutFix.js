@@ -16,10 +16,23 @@ const applyMenuBarLayout = () => {
         titleRowContainer.style.setProperty('overflow-x', 'auto', 'important');
         titleRowContainer.style.setProperty('overflow-y', 'hidden', 'important');
         titleRowContainer.style.setProperty('flex-wrap', 'nowrap', 'important');
-        titleRowContainer.style.setProperty('column-gap', '4px', 'important');
+        // Measured on iPad: 10 visible gaps at 4px contributed 40px while the row
+        // overflowed by 18px. Reducing each gap by 1px recovers 10px without
+        // changing button labels or hit targets.
+        titleRowContainer.style.setProperty('column-gap', '3px', 'important');
         titleRowContainer.style.setProperty('-webkit-overflow-scrolling', 'touch');
         titleRowContainer.style.setProperty('touch-action', 'pan-x', 'important');
         titleRowContainer.style.setProperty('scrollbar-width', 'none');
+    }
+
+    // Scratch keeps the shared Tutorial/Debug group at an inline 64px width even
+    // after Debug is hidden. Tutorial itself measures 56px, so let the group size
+    // to its remaining visible child and recover the otherwise unused 8px.
+    const tutorialButton = document.querySelector('[aria-label="教程"]');
+    const tutorialGroup = tutorialButton && tutorialButton.parentElement;
+    if (tutorialGroup && titleRowContainer && titleRowContainer.contains(tutorialGroup)) {
+        tutorialGroup.style.setProperty('width', 'auto', 'important');
+        tutorialGroup.style.setProperty('min-width', '0', 'important');
     }
 
     // The action buttons already expose connection/upload state on iOS, so the
