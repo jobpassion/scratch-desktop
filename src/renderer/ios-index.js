@@ -1,5 +1,7 @@
+import './MenuBarCleanup';
 import './ios/FileSync';
 import './ios/DynamicControlFontFix';
+import './ios/MenuBarLayoutFix';
 import ReactDOM from 'react-dom';
 import iosApp from './ios-app.jsx';
 
