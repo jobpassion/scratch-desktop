@@ -9,6 +9,8 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
     private let bluetooth = BluetoothBridge()
     private let speechSynthesizer = AVSpeechSynthesizer()
     private var pendingOpenProjectRequestId: Int?
+    private var pendingExportProjectRequestId: Int?
+    private var pendingExportURL: URL?
     private var simulationController: SimulationViewController?
 
     private let lastProjectPathKey = "lastProjectPath"
@@ -45,6 +47,10 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
             openProject(id: id)
         case "quickSaveProject":
             quickSaveProject(id: id, params: params)
+        case "exportProject":
+            exportProject(id: id, params: params)
+        case "clearCurrentProject":
+            clearCurrentProject(id: id)
         case "readBundleFile":
             readBundleFile(id: id, params: params)
         case "speakText":
@@ -101,7 +107,9 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
     }
 
     private func openProject(id: Int) {
-        guard pendingOpenProjectRequestId == nil, let host else {
+        guard pendingOpenProjectRequestId == nil,
+              pendingExportProjectRequestId == nil,
+              let host else {
             reject(id: id, message: "文件选择器正在使用中。")
             return
         }
@@ -113,7 +121,54 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
         host.present(picker, animated: true)
     }
 
+    private func exportProject(id: Int, params: [String: Any]) {
+        guard pendingOpenProjectRequestId == nil,
+              pendingExportProjectRequestId == nil,
+              let host else {
+            reject(id: id, message: "文件选择器正在使用中。")
+            return
+        }
+        guard let base64 = params["data"] as? String,
+              let data = Data(base64Encoded: base64) else {
+            reject(id: id, message: "Scratch 作品数据无效。")
+            return
+        }
+
+        let requestedFilename = (params["filename"] as? String) ?? "未命名作品.sb3"
+        let requestedTitle = URL(fileURLWithPath: requestedFilename)
+            .deletingPathExtension()
+            .lastPathComponent
+        let filename = "\(sanitizeFilename(requestedTitle)).sb3"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+
+        do {
+            if FileManager.default.fileExists(atPath: tempURL.path) {
+                try FileManager.default.removeItem(at: tempURL)
+            }
+            try data.write(to: tempURL, options: .atomic)
+            pendingExportProjectRequestId = id
+            pendingExportURL = tempURL
+
+            let picker = UIDocumentPickerViewController(forExporting: [tempURL], asCopy: true)
+            picker.delegate = self
+            host.present(picker, animated: true)
+        } catch {
+            cleanupPendingExport()
+            reject(id: id, error: error)
+        }
+    }
+
+    private func clearCurrentProject(id: Int) {
+        UserDefaults.standard.removeObject(forKey: lastProjectPathKey)
+        resolve(id: id, payload: ["cleared": true])
+    }
+
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        if let id = pendingExportProjectRequestId {
+            cleanupPendingExport()
+            reject(id: id, message: "cancelled")
+            return
+        }
         guard let id = pendingOpenProjectRequestId else { return }
         pendingOpenProjectRequestId = nil
         reject(id: id, message: "cancelled")
@@ -121,6 +176,16 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
 
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
+        if let id = pendingExportProjectRequestId {
+            let exportedName = urls.first?.lastPathComponent ?? pendingExportURL?.lastPathComponent ?? "作品.sb3"
+            cleanupPendingExport()
+            resolve(id: id, payload: [
+                "exported": true,
+                "displayPath": exportedName
+            ])
+            return
+        }
+
         guard let id = pendingOpenProjectRequestId else { return }
         pendingOpenProjectRequestId = nil
         guard let sourceURL = urls.first else {
@@ -130,17 +195,25 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
         do {
             let data = try Data(contentsOf: sourceURL)
             let title = sourceURL.deletingPathExtension().lastPathComponent
-            let localURL = try projectURL(title: title)
+            let localURL = try availableProjectURL(title: title, excluding: nil)
             try data.write(to: localURL, options: .atomic)
             rememberProjectURL(localURL)
             resolve(id: id, payload: [
                 "data": data.base64EncodedString(),
-                "title": title,
+                "title": localURL.deletingPathExtension().lastPathComponent,
                 "displayPath": localURL.lastPathComponent
             ])
         } catch {
             reject(id: id, error: error)
         }
+    }
+
+    private func cleanupPendingExport() {
+        if let url = pendingExportURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        pendingExportProjectRequestId = nil
+        pendingExportURL = nil
     }
 
     private func quickSaveProject(id: Int, params: [String: Any]) {
@@ -150,9 +223,27 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
             return
         }
         let requestedTitle = (params["title"] as? String) ?? "未命名作品"
+        let safeTitle = sanitizeFilename(requestedTitle)
+
         do {
-            let saveURL = try resolveLastProjectURL() ?? projectURL(title: requestedTitle)
+            let currentURL = try resolveLastProjectURL()
+            let saveURL: URL
+
+            if let currentURL,
+               currentURL.deletingPathExtension().lastPathComponent == safeTitle {
+                saveURL = currentURL
+            } else {
+                saveURL = try availableProjectURL(title: safeTitle, excluding: currentURL)
+            }
+
             try data.write(to: saveURL, options: .atomic)
+
+            if let currentURL,
+               currentURL.standardizedFileURL != saveURL.standardizedFileURL,
+               FileManager.default.fileExists(atPath: currentURL.path) {
+                try? FileManager.default.removeItem(at: currentURL)
+            }
+
             rememberProjectURL(saveURL)
             resolve(id: id, payload: [
                 "title": saveURL.deletingPathExtension().lastPathComponent,
@@ -247,6 +338,37 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
         return try projectDirectoryURL().appendingPathComponent("\(safeTitle).sb3")
     }
 
+    private func availableProjectURL(title: String, excluding currentURL: URL?) throws -> URL {
+        let safeTitle = sanitizeFilename(title)
+        let directory = try projectDirectoryURL()
+        let fileManager = FileManager.default
+        let preferred = directory.appendingPathComponent("\(safeTitle).sb3")
+
+        if let currentURL,
+           currentURL.standardizedFileURL == preferred.standardizedFileURL {
+            return preferred
+        }
+        if !fileManager.fileExists(atPath: preferred.path) {
+            return preferred
+        }
+
+        for index in 2...9999 {
+            let candidate = directory.appendingPathComponent("\(safeTitle) \(index).sb3")
+            if let currentURL,
+               currentURL.standardizedFileURL == candidate.standardizedFileURL {
+                return candidate
+            }
+            if !fileManager.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        throw NSError(
+            domain: "YiyiCoding.Files",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "无法为作品生成可用文件名。"]
+        )
+    }
+
     private func sanitizeFilename(_ title: String) -> String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let invalid = CharacterSet(charactersIn: "<>:\"/\\|?*")
@@ -306,7 +428,7 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         presentAlert(
             title: "一一编程乐园",
-            message: "iPad 版\nVersion \(version)"
+            message: "iOS 版\nVersion \(version)"
         )
         resolve(id: id, payload: ["shown": true])
     }
