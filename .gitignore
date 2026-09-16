@@ -19,6 +19,11 @@ npm-*
 /.opt-in
 /*.provisionprofile
 
+# iOS generated project/web bundle
+/ios/*.xcodeproj
+/ios/App/Web/*
+!/ios/App/Web/.gitkeep
+
 # don't store the assets downloaded with the `fetch` script
 /static/fetched/
 

@@ -1,0 +1,31 @@
+html,
+body,
+#app {
+    width: 100%;
+    height: 100%;
+    overscroll-behavior: none;
+}
+
+body {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+input,
+textarea {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+button,
+input,
+[role="button"] {
+    touch-action: manipulation;
+}
+
+.blocklySvg,
+.blocklyBlockCanvas,
+.blocklyBubbleCanvas {
+    touch-action: none;
+}
