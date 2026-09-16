@@ -886,7 +886,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 actions.append(local, cancel, save);
                 form.append(label, field, actions);
                 overlay.append(form);
-                document.body.appendChild(overlay);
+                document.body.append(overlay);
                 field.focus();
             });
             if (input === null) return null;
