@@ -1,0 +1,42 @@
+name: YiyiCoding
+options:
+  bundleIdPrefix: com.jobpassion
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+targets:
+  YiyiCoding:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: App
+        excludes:
+          - Web
+    resources:
+      - path: App/Web
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jobpassion.yiyicoding
+        PRODUCT_NAME: 一一编程乐园
+        MARKETING_VERSION: 1.0.0
+        CURRENT_PROJECT_VERSION: 1
+        INFOPLIST_FILE: App/Info.plist
+        TARGETED_DEVICE_FAMILY: "2"
+        SUPPORTS_MACCATALYST: NO
+    preBuildScripts:
+      - name: Build Scratch Web
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          cd "$SRCROOT/.."
+          if [ ! -d node_modules ]; then
+            echo "error: node_modules 不存在，请先在仓库根目录运行 npm ci"
+            exit 1
+          fi
+          npm run build:ios:web
