@@ -1,55 +1,3 @@
-const compactButtonText = element => {
-    if (!element) return;
-
-    const text = (element.textContent || '').trim();
-    switch (element.id) {
-    case 'desktop-board-programming-button':
-        if (text === '返回普通编程') {
-            element.textContent = '返回';
-            element.title = '返回普通编程';
-        }
-        break;
-    case 'desktop-board-connect-button':
-        if (text === '立即连接') {
-            element.textContent = '连接';
-            element.title = '立即连接 ESP32';
-        } else if (text === 'ESP32 已连接') {
-            element.textContent = '已连接';
-            element.title = 'ESP32 已连接';
-        }
-        break;
-    case 'desktop-board-upload-button':
-        if (text === '连接后发送' || text === '发送到板上') {
-            element.textContent = '发送';
-            element.title = text;
-        } else if (text.startsWith('发送中 ')) {
-            element.textContent = text.replace('发送中 ', '发送 ');
-            element.title = text;
-        }
-        break;
-    case 'desktop-board-simulation-button':
-        if (text === '仿真板运行') {
-            element.textContent = '仿真';
-            element.title = '仿真板运行';
-        }
-        break;
-    case 'desktop-board-simulation-server-button':
-        if (text === '仿真服务设置') {
-            element.textContent = '仿真设置';
-            element.title = '仿真服务设置';
-        }
-        break;
-    case 'desktop-board-simulation-import-button':
-        if (text === '导入电路') {
-            element.textContent = '导入';
-            element.title = '导入电路';
-        }
-        break;
-    default:
-        break;
-    }
-};
-
 const applyMenuBarLayout = () => {
     const titleInput = document.querySelector('div[class*="menu-bar_menu-bar"] input');
     if (!titleInput || !titleInput.parentElement) return;
@@ -74,15 +22,6 @@ const applyMenuBarLayout = () => {
         titleRowContainer.style.setProperty('scrollbar-width', 'none');
     }
 
-    [
-        'desktop-board-programming-button',
-        'desktop-board-connect-button',
-        'desktop-board-upload-button',
-        'desktop-board-simulation-button',
-        'desktop-board-simulation-server-button',
-        'desktop-board-simulation-import-button'
-    ].forEach(id => compactButtonText(document.getElementById(id)));
-
     // The action buttons already expose connection/upload state on iOS, so the
     // separate desktop status pill only consumes scarce horizontal space.
     const status = document.getElementById('desktop-board-status');
@@ -98,7 +37,6 @@ const startMenuBarLayoutFix = () => {
     observer.observe(document.documentElement, {
         childList: true,
         subtree: true,
-        characterData: true,
         attributes: true,
         attributeFilter: ['style']
     });
