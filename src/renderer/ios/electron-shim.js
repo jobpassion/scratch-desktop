@@ -28,7 +28,7 @@ const invoke = async (channel, payload = {}) => {
         return NativeBridge.call('closeSimulation');
     case 'open-board-simulation':
         if (!payload.serverUrl) {
-            throw new Error('iPad 不支持本机 Docker 仿真，请先配置局域网或公网 Velxio 服务器。');
+            throw new Error('iOS 不支持本机 Docker 仿真，请先配置局域网或公网 Velxio 服务器。');
         }
         return NativeBridge.call('openSimulation', payload);
     case 'getTelemetryDidOptIn':
@@ -71,14 +71,17 @@ const eventNameForChannel = channel => {
     }
 };
 
+const hasOwn = (value, key) => Boolean(value) &&
+    Object.prototype.hasOwnProperty.call(value, key);
+
 const on = (channel, handler) => {
     const eventName = eventNameForChannel(channel);
     if (!eventName) return ipcRenderer;
     const unsubscribe = NativeBridge.on(eventName, payload => {
         if (channel === 'board-simulation-snapshot') {
-            handler({}, payload && payload.content ? payload.content : payload, false);
+            handler({}, hasOwn(payload, 'content') ? payload.content : payload, false);
         } else if (channel === 'board-simulation-status') {
-            handler({}, payload && payload.status ? payload.status : payload);
+            handler({}, hasOwn(payload, 'status') ? payload.status : payload);
         } else {
             handler({}, payload);
         }
