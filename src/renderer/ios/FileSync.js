@@ -26,5 +26,9 @@ const rememberScratchProject = async file => {
 document.addEventListener('change', event => {
     const target = event.target;
     if (!isScratchProjectInput(target)) return;
+
+    // Opening an existing .sb3 means the current document is no longer an
+    // unsaved brand-new project. The opened file becomes the save target.
+    window.__YYCreateNewProjectPending = false;
     rememberScratchProject(target.files[0]);
 }, true);
