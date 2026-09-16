@@ -1,4 +1,5 @@
 import './ios/FileSync';
+import './ios/DynamicControlFontFix';
 import ReactDOM from 'react-dom';
 import iosApp from './ios-app.jsx';
 
