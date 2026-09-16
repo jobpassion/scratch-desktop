@@ -21,9 +21,15 @@ const MenuBarHOC = function (WrappedComponent) {
                 readyToReplaceProject = this.props.confirmWithMessage(message);
             }
             if (readyToReplaceProject) {
-                // A Scratch "New" operation starts a new document. Forget the
-                // previously-opened native file so the next quick save creates a
-                // new .sb3 instead of overwriting the old project.
+                // Mark synchronously that the next save belongs to a brand-new
+                // Scratch document. Native bridge calls are asynchronous, so the
+                // save path must not rely solely on clearCurrentProject finishing
+                // before Scratch completes the New operation.
+                window.__YYCreateNewProjectPending = true;
+
+                // Clear the persisted current-file association as soon as possible
+                // so reopening the app before the new project is saved does not
+                // automatically restore the previous project.
                 NativeBridge.call('clearCurrentProject').catch(error => {
                     console.error('[iOS] failed to clear current project reference', error);
                 });
