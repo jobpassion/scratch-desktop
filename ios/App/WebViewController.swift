@@ -18,6 +18,9 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         configuration.userContentController.add(openedProjectBridge, name: "yiyiFileBridge")
 
         webView = WKWebView(frame: .zero, configuration: configuration)
+        if #available(iOS 16.4, *) {
+            webView.isInspectable = true
+        }
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.scrollView.contentInsetAdjustmentBehavior = .never
