@@ -3,6 +3,7 @@ import WebKit
 
 final class OpenedProjectBridge: NSObject, WKScriptMessageHandler {
     private let lastProjectPathKey = "lastProjectPath"
+    private let projectDirectoryName = "一一编程乐园"
 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
@@ -22,14 +23,17 @@ final class OpenedProjectBridge: NSObject, WKScriptMessageHandler {
                 appropriateFor: nil,
                 create: true
             )
-            let directory = documents.appendingPathComponent("一一编程乐园", isDirectory: true)
+            let directory = documents.appendingPathComponent(projectDirectoryName, isDirectory: true)
             try FileManager.default.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true
             )
             let url = directory.appendingPathComponent("\(sanitizeFilename(title)).sb3")
             try data.write(to: url, options: .atomic)
-            UserDefaults.standard.set(url.path, forKey: lastProjectPathKey)
+            UserDefaults.standard.set(
+                "\(projectDirectoryName)/\(url.lastPathComponent)",
+                forKey: lastProjectPathKey
+            )
         } catch {
             print("Failed to remember opened Scratch project: \(error)")
         }
