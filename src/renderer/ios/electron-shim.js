@@ -13,10 +13,25 @@ const invoke = async (channel, payload = {}) => {
         return decodeProjectResult(await NativeBridge.call('getInitialProjectData'));
     case 'quick-save-project': {
         const bytes = await NativeBridge.projectDataToBytes(payload.projectData);
-        return NativeBridge.call('quickSaveProject', {
+        const createNewProject = Boolean(window.__YYCreateNewProjectPending);
+
+        if (createNewProject) {
+            // Ensure the old document association is definitely gone before the
+            // first save of a newly-created Scratch project. This removes the
+            // race between Scratch's synchronous New flow and the async native
+            // bridge call that clears the previous file reference.
+            await NativeBridge.call('clearCurrentProject');
+        }
+
+        const result = await NativeBridge.call('quickSaveProject', {
             data: NativeBridge.bytesToBase64(bytes),
             title: payload.projectTitle || '未命名作品'
         });
+
+        if (createNewProject) {
+            window.__YYCreateNewProjectPending = false;
+        }
+        return result;
     }
     case 'speak-block-text':
         return NativeBridge.call('speakText', payload);
