@@ -76,6 +76,10 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         decisionHandler(.grant)
     }
 
+    override var prefersStatusBarHidden: Bool {
+        true
+    }
+
     override var prefersHomeIndicatorAutoHidden: Bool {
         true
     }
