@@ -1,4 +1,5 @@
 import './MenuBarCleanup';
+import './BoardControlsDropdown';
 import './ios/FileSync';
 import './ios/DynamicControlFontFix';
 import './ios/MenuBarLayoutFix';
