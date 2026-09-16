@@ -3,6 +3,7 @@
 
 import {ipcRenderer} from 'electron';
 
+import './MenuBarCleanup';
 import ReactDOM from 'react-dom';
 import log from '../common/log.js';
 
