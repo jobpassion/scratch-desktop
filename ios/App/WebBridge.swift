@@ -12,6 +12,7 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
     private var simulationController: SimulationViewController?
 
     private let lastProjectPathKey = "lastProjectPath"
+    private let projectDirectoryName = "一一编程乐园"
 
     override init() {
         super.init()
@@ -83,17 +84,11 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
     }
 
     private func getInitialProjectData(id: Int) {
-        guard let path = UserDefaults.standard.string(forKey: lastProjectPathKey) else {
-            resolve(id: id, payload: NSNull())
-            return
-        }
-        let url = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            UserDefaults.standard.removeObject(forKey: lastProjectPathKey)
-            resolve(id: id, payload: NSNull())
-            return
-        }
         do {
+            guard let url = try resolveLastProjectURL() else {
+                resolve(id: id, payload: NSNull())
+                return
+            }
             let data = try Data(contentsOf: url)
             resolve(id: id, payload: [
                 "data": data.base64EncodedString(),
@@ -137,7 +132,7 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
             let title = sourceURL.deletingPathExtension().lastPathComponent
             let localURL = try projectURL(title: title)
             try data.write(to: localURL, options: .atomic)
-            UserDefaults.standard.set(localURL.path, forKey: lastProjectPathKey)
+            rememberProjectURL(localURL)
             resolve(id: id, payload: [
                 "data": data.base64EncodedString(),
                 "title": title,
@@ -156,15 +151,9 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
         }
         let requestedTitle = (params["title"] as? String) ?? "未命名作品"
         do {
-            let saveURL: URL
-            if let path = UserDefaults.standard.string(forKey: lastProjectPathKey),
-               FileManager.default.fileExists(atPath: path) {
-                saveURL = URL(fileURLWithPath: path)
-            } else {
-                saveURL = try projectURL(title: requestedTitle)
-            }
+            let saveURL = try resolveLastProjectURL() ?? projectURL(title: requestedTitle)
             try data.write(to: saveURL, options: .atomic)
-            UserDefaults.standard.set(saveURL.path, forKey: lastProjectPathKey)
+            rememberProjectURL(saveURL)
             resolve(id: id, payload: [
                 "title": saveURL.deletingPathExtension().lastPathComponent,
                 "displayPath": "文件 App / 一一编程乐园 / \(saveURL.lastPathComponent)"
@@ -174,20 +163,88 @@ final class WebBridge: NSObject, WKScriptMessageHandler, UIDocumentPickerDelegat
         }
     }
 
-    private func projectURL(title: String) throws -> URL {
-        let documents = try FileManager.default.url(
+    private func documentsURL() throws -> URL {
+        try FileManager.default.url(
             for: .documentDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         )
-        let directory = documents.appendingPathComponent("一一编程乐园", isDirectory: true)
+    }
+
+    private func projectDirectoryURL() throws -> URL {
+        let directory = try documentsURL().appendingPathComponent(projectDirectoryName, isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true
         )
+        return directory
+    }
+
+    private func rememberProjectURL(_ url: URL) {
+        UserDefaults.standard.set(
+            "\(projectDirectoryName)/\(url.lastPathComponent)",
+            forKey: lastProjectPathKey
+        )
+    }
+
+    private func resolveLastProjectURL() throws -> URL? {
+        guard let stored = UserDefaults.standard.string(forKey: lastProjectPathKey),
+              !stored.isEmpty else {
+            return nil
+        }
+
+        let fileManager = FileManager.default
+        let projectDirectory = try projectDirectoryURL()
+
+        // Older builds stored the full sandbox path. Xcode/App updates can move the
+        // data container and invalidate that absolute prefix even though Documents
+        // and the saved project still exist. Recover by filename in the current
+        // Documents container and migrate the preference to a relative reference.
+        if stored.hasPrefix("/") {
+            let legacyURL = URL(fileURLWithPath: stored)
+            let currentURL = projectDirectory.appendingPathComponent(legacyURL.lastPathComponent)
+            if fileManager.fileExists(atPath: currentURL.path) {
+                rememberProjectURL(currentURL)
+                return currentURL
+            }
+            if fileManager.fileExists(atPath: legacyURL.path) {
+                rememberProjectURL(legacyURL)
+                return legacyURL
+            }
+            UserDefaults.standard.removeObject(forKey: lastProjectPathKey)
+            return nil
+        }
+
+        let components = stored.split(separator: "/").map(String.init)
+        guard !components.isEmpty,
+              !components.contains("..") else {
+            UserDefaults.standard.removeObject(forKey: lastProjectPathKey)
+            return nil
+        }
+
+        let url: URL
+        if components.count == 1 {
+            // Accept an early relative format which stored only the filename.
+            url = projectDirectory.appendingPathComponent(components[0])
+        } else {
+            var candidate = try documentsURL()
+            for component in components {
+                candidate.appendPathComponent(component)
+            }
+            url = candidate
+        }
+
+        guard fileManager.fileExists(atPath: url.path) else {
+            UserDefaults.standard.removeObject(forKey: lastProjectPathKey)
+            return nil
+        }
+        return url
+    }
+
+    private func projectURL(title: String) throws -> URL {
         let safeTitle = sanitizeFilename(title)
-        return directory.appendingPathComponent("\(safeTitle).sb3")
+        return try projectDirectoryURL().appendingPathComponent("\(safeTitle).sb3")
     }
 
     private func sanitizeFilename(_ title: String) -> String {
