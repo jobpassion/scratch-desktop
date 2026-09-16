@@ -6,6 +6,11 @@ body,
     overscroll-behavior: none;
 }
 
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
@@ -28,4 +33,63 @@ input,
 .blocklyBlockCanvas,
 .blocklyBubbleCanvas {
     touch-action: none;
+}
+
+/*
+ * The desktop board controls are inserted into Scratch's menu bar at runtime.
+ * On WKWebView they can inherit Scratch's icon font, which renders Chinese
+ * labels as missing-glyph boxes. Force a native CJK-capable font on iPad.
+ */
+#desktop-quick-save-button,
+#desktop-board-programming-button,
+#desktop-board-connect-button,
+#desktop-board-upload-button,
+#desktop-board-simulation-button,
+#desktop-board-simulation-server-button,
+#desktop-board-simulation-import-button,
+#desktop-board-status,
+#desktop-quick-save-feedback {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif !important;
+    white-space: nowrap !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+}
+
+#desktop-quick-save-button,
+#desktop-board-programming-button,
+#desktop-board-connect-button,
+#desktop-board-upload-button,
+#desktop-board-simulation-button,
+#desktop-board-simulation-server-button,
+#desktop-board-simulation-import-button {
+    min-width: max-content !important;
+    height: 36px !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    font-size: 12px !important;
+    line-height: 36px !important;
+}
+
+#desktop-board-status {
+    font-size: 11px !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+}
+
+/*
+ * Modern iPads support :has(). Let the desktop title row scroll horizontally
+ * instead of compressing or clipping the board controls when they do not fit.
+ */
+@supports selector(:has(*)) {
+    div:has(> #desktop-quick-save-button) {
+        column-gap: 4px !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    div:has(> #desktop-quick-save-button)::-webkit-scrollbar {
+        display: none;
+    }
 }
