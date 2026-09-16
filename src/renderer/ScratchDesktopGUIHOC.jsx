@@ -190,8 +190,8 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 this.setupBlockSpeechListeners();
                 this.setupCategorySpeechListeners();
             }, 500);
-            window.addEventListener('mousemove', this.handleGlobalPointerMove, true);
-            window.addEventListener('mouseup', this.handleGlobalPointerUp, true);
+            window.addEventListener('pointermove', this.handleGlobalPointerMove, true);
+            window.addEventListener('pointerup', this.handleGlobalPointerUp, true);
         }
         componentWillUnmount () {
             ipcRenderer.removeListener('setTitleFromSave', this.handleSetTitleFromSave);
@@ -199,8 +199,8 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             ipcRenderer.removeListener('board-simulation-snapshot', this.handleBoardSimulationSnapshot);
             ipcRenderer.removeListener('board-simulation-status', this.handleBoardSimulationStatus);
             window.clearInterval(this.logoObserver);
-            window.removeEventListener('mousemove', this.handleGlobalPointerMove, true);
-            window.removeEventListener('mouseup', this.handleGlobalPointerUp, true);
+            window.removeEventListener('pointermove', this.handleGlobalPointerMove, true);
+            window.removeEventListener('pointerup', this.handleGlobalPointerUp, true);
             this.tearDownBlockSpeechListeners();
             this.tearDownCategorySpeechListeners();
             if (this.boardToolboxWorkspace) {
@@ -258,9 +258,9 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             this.tearDownBlockSpeechListeners();
             nextCanvasMap.forEach(({canvas}) => {
                 if (blockSpeechTriggerMode === 'click') {
-                    canvas.addEventListener('mousedown', this.handleWorkspaceImmediateSpeech, true);
+                    canvas.addEventListener('pointerdown', this.handleWorkspaceImmediateSpeech, true);
                 } else {
-                    canvas.addEventListener('mousedown', this.handleWorkspacePointerDown, true);
+                    canvas.addEventListener('pointerdown', this.handleWorkspacePointerDown, true);
                 }
             });
             this.blockSpeechCanvases = nextCanvasMap;
@@ -270,8 +270,8 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
             this.cancelPendingBlockSpeech();
             if (this.blockSpeechCanvases) {
                 this.blockSpeechCanvases.forEach(({canvas}) => {
-                    canvas.removeEventListener('mousedown', this.handleWorkspaceImmediateSpeech, true);
-                    canvas.removeEventListener('mousedown', this.handleWorkspacePointerDown, true);
+                    canvas.removeEventListener('pointerdown', this.handleWorkspaceImmediateSpeech, true);
+                    canvas.removeEventListener('pointerdown', this.handleWorkspacePointerDown, true);
                 });
                 this.blockSpeechCanvases = null;
                 console.log(`${speechDebugPrefix} listeners detached`);
@@ -287,13 +287,13 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 return;
             }
             this.tearDownCategorySpeechListeners();
-            toolboxElement.addEventListener('mouseup', this.handleCategoryImmediateSpeech, true);
+            toolboxElement.addEventListener('pointerdown', this.handleCategoryImmediateSpeech, true);
             this.categorySpeechToolbox = toolboxElement;
             console.log(`${categorySpeechDebugPrefix} listener attached`);
         }
         tearDownCategorySpeechListeners () {
             if (this.categorySpeechToolbox) {
-                this.categorySpeechToolbox.removeEventListener('mouseup', this.handleCategoryImmediateSpeech, true);
+                this.categorySpeechToolbox.removeEventListener('pointerdown', this.handleCategoryImmediateSpeech, true);
                 this.categorySpeechToolbox = null;
                 console.log(`${categorySpeechDebugPrefix} listener detached`);
             }
@@ -886,7 +886,7 @@ const ScratchDesktopGUIHOC = function (WrappedComponent) {
                 actions.append(local, cancel, save);
                 form.append(label, field, actions);
                 overlay.append(form);
-                document.body.append(overlay);
+                document.body.appendChild(overlay);
                 field.focus();
             });
             if (input === null) return null;
