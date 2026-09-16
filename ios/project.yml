@@ -17,9 +17,6 @@ targets:
       - path: App
         excludes:
           - Web
-    resources:
-      - path: App/Web
-        type: folder
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jobpassion.yiyicoding
@@ -34,9 +31,33 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           set -e
+          export NVM_DIR="$HOME/.nvm"
+          if [ -s "$NVM_DIR/nvm.sh" ]; then
+            . "$NVM_DIR/nvm.sh"
+            nvm use --silent 22 >/dev/null 2>&1 || true
+          fi
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "error: 找不到 npm。请确认已通过 nvm 安装 Node 22。"
+            exit 1
+          fi
           cd "$SRCROOT/.."
           if [ ! -d node_modules ]; then
             echo "error: node_modules 不存在，请先在仓库根目录运行 npm ci"
             exit 1
           fi
           npm run build:ios:web
+    postBuildScripts:
+      - name: Copy Scratch Web Into App Bundle
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          WEB_SRC="$SRCROOT/App/Web"
+          WEB_DST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Web"
+          if [ ! -f "$WEB_SRC/index.html" ]; then
+            echo "error: iOS Web 资源未生成：$WEB_SRC/index.html"
+            exit 1
+          fi
+          rm -rf "$WEB_DST"
+          mkdir -p "$WEB_DST"
+          ditto "$WEB_SRC" "$WEB_DST"
+          echo "Copied Scratch Web resources to $WEB_DST"
