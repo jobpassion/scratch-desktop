@@ -13,16 +13,14 @@ const applyMenuBarLayout = () => {
     if (titleRowContainer) {
         titleRowContainer.style.setProperty('min-width', '0', 'important');
         titleRowContainer.style.setProperty('max-width', '100%', 'important');
-        titleRowContainer.style.setProperty('overflow-x', 'auto', 'important');
-        titleRowContainer.style.setProperty('overflow-y', 'hidden', 'important');
+        titleRowContainer.style.setProperty('overflow', 'visible', 'important');
         titleRowContainer.style.setProperty('flex-wrap', 'nowrap', 'important');
-        // Measured on iPad: 10 visible gaps at 4px contributed 40px while the row
-        // overflowed by 18px. Reducing each gap by 1px recovers 10px without
-        // changing button labels or hit targets.
+        // The measured iPad layout fits once Debug is removed, the Tutorial group
+        // is allowed to shrink, and the visible gaps use 3px. Do not make the
+        // whole Scratch menu bar a scroll container: its File/Edit/Settings menus
+        // are absolutely positioned below this row and must be able to overflow it.
         titleRowContainer.style.setProperty('column-gap', '3px', 'important');
-        titleRowContainer.style.setProperty('-webkit-overflow-scrolling', 'touch');
-        titleRowContainer.style.setProperty('touch-action', 'pan-x', 'important');
-        titleRowContainer.style.setProperty('scrollbar-width', 'none');
+        titleRowContainer.style.setProperty('touch-action', 'auto', 'important');
     }
 
     // Scratch keeps the shared Tutorial/Debug group at an inline 64px width even
