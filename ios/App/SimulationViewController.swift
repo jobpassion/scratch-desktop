@@ -184,16 +184,16 @@ final class SimulationViewController: UIViewController, WKNavigationDelegate {
         });
         """
 
-        webView.callAsyncJavaScript(
-            script,
-            arguments: ["payload": payload],
-            in: nil,
-            contentWorld: .page
-        ) { result in
-            switch result {
-            case .success:
+        Task {
+            do {
+                _ = try await webView.callAsyncJavaScript(
+                    script,
+                    arguments: ["payload": payload],
+                    in: nil,
+                    contentWorld: .page
+                )
                 completion(.success(()))
-            case .failure(let error):
+            } catch {
                 completion(.failure(error))
             }
         }
@@ -249,20 +249,20 @@ final class SimulationViewController: UIViewController, WKNavigationDelegate {
             }
         });
         """
-        webView.callAsyncJavaScript(
-            script,
-            arguments: [:],
-            in: nil,
-            contentWorld: .page
-        ) { result in
-            switch result {
-            case .success(let value):
+        Task {
+            do {
+                let value = try await webView.callAsyncJavaScript(
+                    script,
+                    arguments: [:],
+                    in: nil,
+                    contentWorld: .page
+                )
                 if let content = value as? String {
                     completion(.success(content))
                 } else {
                     completion(.failure(SimulationError.invalidSnapshot))
                 }
-            case .failure(let error):
+            } catch {
                 completion(.failure(error))
             }
         }
