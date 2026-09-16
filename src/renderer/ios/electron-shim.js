@@ -16,10 +16,6 @@ const invoke = async (channel, payload = {}) => {
         const createNewProject = Boolean(window.__YYCreateNewProjectPending);
 
         if (createNewProject) {
-            // Ensure the old document association is definitely gone before the
-            // first save of a newly-created Scratch project. This removes the
-            // race between Scratch's synchronous New flow and the async native
-            // bridge call that clears the previous file reference.
             await NativeBridge.call('clearCurrentProject');
         }
 
@@ -56,6 +52,15 @@ const invoke = async (channel, payload = {}) => {
 
 const send = (channel, payload) => {
     switch (channel) {
+    case 'projectWasCreated':
+        // This event is emitted by Scratch after a real New-project transition.
+        // The iOS save path must treat the next save as a brand-new document so
+        // the previously opened .sb3 is never overwritten or renamed away.
+        window.__YYCreateNewProjectPending = true;
+        NativeBridge.call('clearCurrentProject').catch(error => {
+            console.error('[iOS] failed to clear current project after projectWasCreated', error);
+        });
+        break;
     case 'open-about-window':
         NativeBridge.call('openAbout').catch(console.error);
         break;
