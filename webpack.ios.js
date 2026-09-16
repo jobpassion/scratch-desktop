@@ -48,6 +48,22 @@ module.exports = makeConfig(
         ],
         plugins: [
             new webpack.NormalModuleReplacementPlugin(
+                /^electron$/,
+                path.resolve(__dirname, 'src/renderer/ios/electron-shim.js')
+            ),
+            new webpack.NormalModuleReplacementPlugin(
+                /^buffer$/,
+                path.resolve(__dirname, 'src/renderer/ios/buffer-shim.js')
+            ),
+            new webpack.NormalModuleReplacementPlugin(
+                /ElectronStorageHelper$/,
+                path.resolve(__dirname, 'src/common/IOSStorageHelper.js')
+            ),
+            new webpack.NormalModuleReplacementPlugin(
+                /ESP32Bluetooth$/,
+                path.resolve(__dirname, 'src/renderer/board/IOSBluetooth.js')
+            ),
+            new webpack.NormalModuleReplacementPlugin(
                 /scratch-logo(-android)?\.svg$/,
                 resource => {
                     resource.request = path.resolve(__dirname, 'src/renderer/assets/yiyi-menu-logo.svg');
