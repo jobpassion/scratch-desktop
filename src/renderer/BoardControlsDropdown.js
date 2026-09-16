@@ -1,11 +1,12 @@
 const hiddenActionIds = [
+    'desktop-board-simulation-button',
     'desktop-board-simulation-server-button',
     'desktop-board-simulation-import-button'
 ];
 
 const moreButtonId = 'desktop-board-more-button';
 const menuId = 'desktop-board-more-menu';
-const iosSafeFont = '"PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif';
+const sharedSafeFont = '"PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif';
 
 const closeMenu = () => {
     const menu = document.getElementById(menuId);
@@ -35,7 +36,7 @@ const makeMenuItem = (sourceButton, label) => {
         padding: '10px 12px',
         background: 'transparent',
         color: '#222',
-        fontFamily: iosSafeFont,
+        fontFamily: sharedSafeFont,
         fontSize: '14px',
         fontWeight: '600',
         textAlign: 'left',
@@ -60,9 +61,10 @@ const makeMenuItem = (sourceButton, label) => {
 const openMenu = button => {
     closeMenu();
 
+    const runButton = document.getElementById('desktop-board-simulation-button');
     const serverButton = document.getElementById('desktop-board-simulation-server-button');
     const importButton = document.getElementById('desktop-board-simulation-import-button');
-    if (!serverButton && !importButton) return;
+    if (!runButton && !serverButton && !importButton) return;
 
     const menu = document.createElement('div');
     menu.id = menuId;
@@ -78,6 +80,9 @@ const openMenu = button => {
         boxSizing: 'border-box'
     });
 
+    if (runButton) {
+        menu.appendChild(makeMenuItem(runButton, runButton.textContent || '仿真板运行'));
+    }
     if (serverButton) menu.appendChild(makeMenuItem(serverButton, '仿真服务设置'));
     if (importButton) menu.appendChild(makeMenuItem(importButton, '导入电路'));
 
@@ -88,6 +93,7 @@ const openMenu = button => {
 
 const ensureMoreButton = () => {
     const programmingButton = document.getElementById('desktop-board-programming-button');
+    const runButton = document.getElementById('desktop-board-simulation-button');
     const serverButton = document.getElementById('desktop-board-simulation-server-button');
     const importButton = document.getElementById('desktop-board-simulation-import-button');
     const titleRowContainer = programmingButton && programmingButton.parentElement;
@@ -98,7 +104,7 @@ const ensureMoreButton = () => {
     });
 
     let moreButton = document.getElementById(moreButtonId);
-    if (!titleRowContainer || (!serverButton && !importButton)) {
+    if (!titleRowContainer || (!runButton && !serverButton && !importButton)) {
         if (moreButton) moreButton.remove();
         closeMenu();
         return;
@@ -108,7 +114,7 @@ const ensureMoreButton = () => {
         moreButton = document.createElement('button');
         moreButton.id = moreButtonId;
         moreButton.type = 'button';
-        moreButton.textContent = '更多 ▾';
+        moreButton.textContent = '仿真 ▾';
         moreButton.setAttribute('aria-haspopup', 'menu');
         moreButton.setAttribute('aria-expanded', 'false');
         moreButton.addEventListener('click', event => {
@@ -127,7 +133,7 @@ const ensureMoreButton = () => {
         padding: '0 12px',
         backgroundColor: '#0c956f',
         color: '#fff',
-        fontFamily: iosSafeFont,
+        fontFamily: sharedSafeFont,
         fontWeight: '700',
         fontSize: '14px',
         whiteSpace: 'nowrap',
