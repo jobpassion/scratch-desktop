@@ -4,6 +4,7 @@
 import {ipcRenderer} from 'electron';
 
 import './MenuBarCleanup';
+import './BoardControlsDropdown';
 import ReactDOM from 'react-dom';
 import log from '../common/log.js';
 
