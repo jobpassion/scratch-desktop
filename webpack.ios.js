@@ -68,6 +68,10 @@ module.exports = makeConfig(
                 path.resolve(__dirname, 'src/renderer/board/IOSBluetooth.js')
             ),
             new webpack.NormalModuleReplacementPlugin(
+                /containers[\\/]menu\.jsx$/,
+                path.resolve(__dirname, 'src/renderer/ios/ScratchMenu.jsx')
+            ),
+            new webpack.NormalModuleReplacementPlugin(
                 /scratch-logo(-android)?\.svg$/,
                 resource => {
                     resource.request = path.resolve(__dirname, 'src/renderer/assets/yiyi-menu-logo.svg');
