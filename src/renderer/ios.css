@@ -75,21 +75,3 @@ input,
     padding-left: 6px !important;
     padding-right: 6px !important;
 }
-
-/*
- * Modern iPads support :has(). Let the desktop title row scroll horizontally
- * instead of compressing or clipping the board controls when they do not fit.
- */
-@supports selector(:has(*)) {
-    div:has(> #desktop-quick-save-button) {
-        column-gap: 4px !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-
-    div:has(> #desktop-quick-save-button)::-webkit-scrollbar {
-        display: none;
-    }
-}
