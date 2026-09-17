@@ -24,6 +24,9 @@ jobs:
       QEMU_REF: ${{ inputs.qemu_ref || 'picsimlab-esp32' }}
 
     steps:
+      - name: Checkout scratch-desktop patches
+        uses: actions/checkout@v4
+
       - name: Install QEMU build dependencies
         run: |
           sudo apt-get update
@@ -50,13 +53,24 @@ jobs:
             | tee RMT_LOCATIONS.txt || true
 
       - name: Apply local QEMU patches
+        shell: bash
         run: |
-          if compgen -G "patches/qemu/*.patch" > /dev/null; then
-            for patch in patches/qemu/*.patch; do
-              echo "Applying $patch"
-              git -C qemu-lcgamboa apply "../$patch"
-            done
+          set -euo pipefail
+          shopt -s nullglob
+          patches=(patches/qemu/*.patch)
+          if (( ${#patches[@]} == 0 )); then
+            echo "ERROR: no QEMU patches found" >&2
+            exit 1
           fi
+          for patch in "${patches[@]}"; do
+            echo "Applying $patch"
+            git -C qemu-lcgamboa apply --check "../$patch"
+            git -C qemu-lcgamboa apply "../$patch"
+          done
+          git -C qemu-lcgamboa diff --check
+          git -C qemu-lcgamboa diff -- hw/ssi/esp32_rmt.c | tee QEMU_APPLIED.diff
+          grep -q 'picsimlab_rmt_event(channel, s->conf0\[channel\], 0);' \
+            qemu-lcgamboa/hw/ssi/esp32_rmt.c
 
       - name: Build shared library
         working-directory: qemu-lcgamboa
@@ -74,10 +88,11 @@ jobs:
       - name: Upload libqemu artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libqemu-xtensa-${{ env.QEMU_COMMIT }}
+          name: libqemu-xtensa-rmt-frame-end-${{ env.QEMU_COMMIT }}
           path: |
             qemu-lcgamboa/build/libqemu-xtensa.so
             QEMU_COMMIT.txt
+            QEMU_APPLIED.diff
             RMT_LOCATIONS.txt
           if-no-files-found: error
           retention-days: 14
