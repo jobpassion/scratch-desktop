@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_asset:
-        description: "Optional exact Velxio asset name qemu-source-<commit>; leave blank to auto-detect when the manifest contains exactly one"
+        description: "Optional exact Velxio asset name qemu-source-<commit>; leave blank to match against the current arm64 binary"
         required: false
         default: ""
   push:
@@ -34,7 +34,7 @@ jobs:
           uname -m
           test "$(uname -m)" = "aarch64"
 
-      - name: Check Velxio source access
+      - name: Match Velxio source to current arm64 binary
         id: source
         shell: bash
         env:
@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
 
           if [ -z "${VELXIO_LICENSE_KEY:-}" ]; then
-            echo "::error::Missing repository secret VELXIO_LICENSE_KEY. Create a free Velxio personal key, then add it as Actions secret VELXIO_LICENSE_KEY."
+            echo "::error::Missing repository secret VELXIO_LICENSE_KEY."
             exit 1
           fi
 
@@ -56,11 +56,54 @@ jobs:
             mapfile -t SOURCE_ASSETS < <(
               grep -oE 'qemu-source-[0-9a-fA-F]{7,40}' velxio-downloads.json | sort -u
             )
-            if [ "${#SOURCE_ASSETS[@]}" -ne 1 ]; then
-              echo "::error::Could not auto-select Velxio QEMU source archive. Found ${#SOURCE_ASSETS[@]} candidates: ${SOURCE_ASSETS[*]:-none}. Re-run manually and set source_asset explicitly."
+            if [ "${#SOURCE_ASSETS[@]}" -eq 0 ]; then
+              echo "::error::No qemu-source-* assets found in the Velxio download manifest."
               exit 1
             fi
-            SOURCE_ASSET="${SOURCE_ASSETS[0]}"
+
+            echo "Source candidates: ${SOURCE_ASSETS[*]}"
+            echo "Downloading current Velxio arm64 Xtensa binary to identify its corresponding source..."
+            curl -fSL \
+              -o reference-libqemu-xtensa.so \
+              "${VELXIO_DOWNLOAD_BASE}/libqemu-xtensa-arm64?key=${VELXIO_LICENSE_KEY}"
+            REF_SHA="$(sha256sum reference-libqemu-xtensa.so | awk '{print $1}')"
+            echo "Current arm64 libqemu sha256: $REF_SHA"
+            printf '%s\n' "$REF_SHA" > VELXIO_REFERENCE_LIB_SHA256.txt
+
+            MATCHES=()
+            rm -f VELXIO_SOURCE_README_SUMMARY.txt
+            for candidate in "${SOURCE_ASSETS[@]}"; do
+              echo "Inspecting $candidate ..."
+              tmp="source-${candidate}.tar.gz"
+              curl -fSL \
+                -o "$tmp" \
+                "${VELXIO_DOWNLOAD_BASE}/${candidate}?key=${VELXIO_LICENSE_KEY}"
+
+              readme_path="$(tar -tzf "$tmp" | grep -E '(^|/)README\.VELXIO-SOURCE\.md$' | head -1 || true)"
+              if [ -z "$readme_path" ]; then
+                echo "$candidate: README.VELXIO-SOURCE.md not found" | tee -a VELXIO_SOURCE_README_SUMMARY.txt
+                continue
+              fi
+
+              tar -xOzf "$tmp" "$readme_path" > "${candidate}.README.VELXIO-SOURCE.md"
+              echo "===== $candidate =====" >> VELXIO_SOURCE_README_SUMMARY.txt
+              grep -Ei 'commit|libqemu-xtensa|arm64|sha256|binary|correspond' \
+                "${candidate}.README.VELXIO-SOURCE.md" \
+                | head -80 >> VELXIO_SOURCE_README_SUMMARY.txt || true
+
+              if grep -qi "$REF_SHA" "${candidate}.README.VELXIO-SOURCE.md"; then
+                MATCHES+=("$candidate")
+                cp "$tmp" velxio-qemu-source.tar.gz
+              fi
+            done
+
+            cat VELXIO_SOURCE_README_SUMMARY.txt || true
+
+            if [ "${#MATCHES[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one source archive whose README records current libqemu sha256 $REF_SHA; found ${#MATCHES[@]} matches: ${MATCHES[*]:-none}."
+              exit 1
+            fi
+            SOURCE_ASSET="${MATCHES[0]}"
           fi
 
           if ! [[ "$SOURCE_ASSET" =~ ^qemu-source-[0-9a-fA-F]{7,40}$ ]]; then
@@ -78,9 +121,11 @@ jobs:
           set -euo pipefail
           SOURCE_ASSET='${{ steps.source.outputs.source_asset }}'
 
-          curl -fSL \
-            -o velxio-qemu-source.tar.gz \
-            "${VELXIO_DOWNLOAD_BASE}/${SOURCE_ASSET}?key=${VELXIO_LICENSE_KEY}"
+          if [ ! -f velxio-qemu-source.tar.gz ]; then
+            curl -fSL \
+              -o velxio-qemu-source.tar.gz \
+              "${VELXIO_DOWNLOAD_BASE}/${SOURCE_ASSET}?key=${VELXIO_LICENSE_KEY}"
+          fi
 
           sha256sum velxio-qemu-source.tar.gz | tee VELXIO_QEMU_SOURCE_SHA256.txt
           tar -tzf velxio-qemu-source.tar.gz | head -40 | tee VELXIO_QEMU_SOURCE_HEAD.txt
@@ -168,8 +213,10 @@ jobs:
           path: |
             qemu-velxio/build/libqemu-xtensa.so
             VELXIO_QEMU_SOURCE_ASSET.txt
+            VELXIO_REFERENCE_LIB_SHA256.txt
             VELXIO_QEMU_SOURCE_SHA256.txt
             VELXIO_QEMU_SOURCE_HEAD.txt
+            VELXIO_SOURCE_README_SUMMARY.txt
             VELXIO_MACHINE_CHECK.txt
             LIBQEMU_FILE.txt
             LIBQEMU_EXPORTS.txt
