@@ -57,9 +57,9 @@ const compileStack = (blocks, firstId, indent, context, seen = new Set()) => {
             lines.push(`${indent}_write_pwm(${pin}, ${value('VALUE')})`);
             break;
         }
-        case 'control_wait': lines.push(`${indent}sleep(${value('DURATION')})`); break;
+        case 'control_wait': lines.push(`${indent}sleep(max(0, _scratch_num(${value('DURATION')})))`); break;
         case 'control_repeat':
-            lines.push(`${indent}for _ in range(max(0, int(${value('TIMES')}))):`);
+            lines.push(`${indent}for _ in range(max(0, int(round(_scratch_num(${value('TIMES')}))))):`);
             lines.push(body('SUBSTACK'));
             break;
         case 'control_forever':
@@ -67,28 +67,28 @@ const compileStack = (blocks, firstId, indent, context, seen = new Set()) => {
             lines.push(body('SUBSTACK'));
             break;
         case 'control_if':
-            lines.push(`${indent}if ${value('CONDITION')}:`);
+            lines.push(`${indent}if _scratch_bool(${value('CONDITION')}):`);
             lines.push(body('SUBSTACK'));
             break;
         case 'control_if_else':
-            lines.push(`${indent}if ${value('CONDITION')}:`);
+            lines.push(`${indent}if _scratch_bool(${value('CONDITION')}):`);
             lines.push(body('SUBSTACK'));
             lines.push(`${indent}else:`);
             lines.push(body('SUBSTACK2'));
             break;
         case 'control_repeat_until':
-            lines.push(`${indent}while not (${value('CONDITION')}):`);
+            lines.push(`${indent}while not _scratch_bool(${value('CONDITION')}):`);
             lines.push(body('SUBSTACK'));
             break;
         case 'control_wait_until':
-            lines.push(`${indent}while not (${value('CONDITION')}):`);
+            lines.push(`${indent}while not _scratch_bool(${value('CONDITION')}):`);
             lines.push(`${indent}    sleep(0.01)`);
             break;
         case 'data_setvariableto':
             lines.push(`${indent}${context.variable(block)} = ${value('VALUE')}`);
             break;
         case 'data_changevariableby':
-            lines.push(`${indent}${context.variable(block)} += ${value('VALUE')}`);
+            lines.push(`${indent}${context.variable(block)} = _scratch_add(${context.variable(block)}, ${value('VALUE')})`);
             break;
         case 'procedures_call': {
             const code = block.mutation && block.mutation.proccode;
@@ -183,9 +183,91 @@ const compileESP32 = vm => {
         'from time import sleep',
         'import random',
         ...quickSupport.imports,
+        'def _scratch_str(value):\n' +
+            "    if value is True:\n        return 'true'\n" +
+            "    if value is False:\n        return 'false'\n" +
+            '    if isinstance(value, float):\n' +
+            '        try:\n' +
+            '            integer = int(value)\n' +
+            '            if value == integer:\n' +
+            '                return str(integer)\n' +
+            '        except:\n' +
+            '            pass\n' +
+            '    return str(value)',
+        'def _scratch_number_or_none(value):\n' +
+            '    if value is True:\n        return 1\n' +
+            '    if value is False:\n        return 0\n' +
+            '    if isinstance(value, (int, float)):\n' +
+            '        if isinstance(value, float) and value != value:\n' +
+            '            return None\n' +
+            '        return value\n' +
+            '    text = str(value).strip()\n' +
+            "    if text == '':\n        return 0\n" +
+            '    try:\n' +
+            '        number = float(text)\n' +
+            '        if number != number:\n' +
+            '            return None\n' +
+            '        try:\n' +
+            '            integer = int(number)\n' +
+            '            if number == integer:\n' +
+            '                return integer\n' +
+            '        except:\n' +
+            '            pass\n' +
+            '        return number\n' +
+            '    except:\n' +
+            '        return None',
+        'def _scratch_num(value):\n' +
+            '    number = _scratch_number_or_none(value)\n' +
+            '    return 0 if number is None else number',
+        'def _scratch_bool(value):\n' +
+            '    if isinstance(value, bool):\n        return value\n' +
+            '    if value is None:\n        return False\n' +
+            '    if isinstance(value, str):\n' +
+            '        text = value.strip().lower()\n' +
+            "        return text != '' and text != '0' and text != 'false'\n" +
+            '    if isinstance(value, float) and value != value:\n' +
+            '        return False\n' +
+            '    return value != 0',
+        'def _scratch_add(left, right):\n' +
+            '    return _scratch_num(left) + _scratch_num(right)',
+        'def _scratch_div(left, right):\n' +
+            '    a = _scratch_num(left)\n' +
+            '    b = _scratch_num(right)\n' +
+            '    if b == 0:\n' +
+            "        if a == 0:\n            return float('nan')\n" +
+            "        return float('-inf') if a < 0 else float('inf')\n" +
+            '    return a / b',
+        'def _scratch_mod(left, right):\n' +
+            '    a = _scratch_num(left)\n' +
+            '    b = _scratch_num(right)\n' +
+            "    return float('nan') if b == 0 else a % b",
+        'def _scratch_compare(left, right):\n' +
+            '    a = _scratch_number_or_none(left)\n' +
+            '    b = _scratch_number_or_none(right)\n' +
+            '    if a is not None and b is not None:\n' +
+            '        return -1 if a < b else (1 if a > b else 0)\n' +
+            '    a = _scratch_str(left).lower()\n' +
+            '    b = _scratch_str(right).lower()\n' +
+            '    return -1 if a < b else (1 if a > b else 0)',
+        'def _scratch_random(left, right):\n' +
+            '    a = _scratch_num(left)\n' +
+            '    b = _scratch_num(right)\n' +
+            '    low = min(a, b)\n' +
+            '    high = max(a, b)\n' +
+            '    try:\n' +
+            '        if low == int(low) and high == int(high):\n' +
+            '            return random.randint(int(low), int(high))\n' +
+            '    except:\n' +
+            '        pass\n' +
+            '    return low + ((high - low) * random.random())',
+        'def _scratch_letter(index, value):\n' +
+            '    text = _scratch_str(value)\n' +
+            '    position = int(_scratch_num(index))\n' +
+            "    if position < 1 or position > len(text):\n        return ''\n" +
+            '    return text[position - 1]',
         `_board_print_prefix = ${literal(BOARD_PRINT_PREFIX)}`,
         'def _board_print(value):\n' +
-            "    for line in str(value).split('\\n'):\n" +
+            "    for line in _scratch_str(value).split('\\n'):\n" +
             '        print(_board_print_prefix + line)',
         '_adc_inputs = {}',
         'def _read_analog(pin):\n' +
@@ -198,7 +280,7 @@ const compileESP32 = vm => {
         'def _write_pwm(pin, value):\n' +
             '    if pin not in _pwm_outputs:\n' +
             '        _pwm_outputs[pin] = PWM(Pin(pin), freq=1000)\n' +
-            '    _pwm_outputs[pin].duty(max(0, min(1023, int(value))))',
+            '    _pwm_outputs[pin].duty(max(0, min(1023, int(_scratch_num(value)))))',
         ...quickSupport.helpers,
         ...initializers,
         ...functions,
