@@ -19,18 +19,17 @@ export const literal = value => {
 
 export const expression = (blocks, block, context) => {
     if (!block) return '0';
-    const binary = (left, right, operator) =>
-        `(${expression(blocks, input(blocks, block, left), context)} ${operator} ` +
-        `${expression(blocks, input(blocks, block, right), context)})`;
+    const value = name => expression(blocks, input(blocks, block, name), context);
+    const binaryCall = (left, right, helper) => `${helper}(${value(left)}, ${value(right)})`;
     switch (block.opcode) {
     case 'math_number':
     case 'math_integer':
     case 'math_whole_number':
     case 'math_positive_number':
     case 'math_decimal': {
-        const value = Number(field(block, 'NUM'));
-        if (!Number.isFinite(value)) throw new Error('数值积木中有无效数字。');
-        return String(value);
+        const number = Number(field(block, 'NUM'));
+        if (!Number.isFinite(number)) throw new Error('数值积木中有无效数字。');
+        return String(number);
     }
     case 'text': return literal(field(block, 'TEXT'));
     case 'data_variable': return context.variable(block);
@@ -50,31 +49,24 @@ export const expression = (blocks, block, context) => {
         if (!context.analogPins.has(pin)) throw new Error('ESP32 模拟输入引脚无效。');
         return `_read_analog(${pin})`;
     }
-    case 'operator_add': return binary('NUM1', 'NUM2', '+');
-    case 'operator_subtract': return binary('NUM1', 'NUM2', '-');
-    case 'operator_multiply': return binary('NUM1', 'NUM2', '*');
-    case 'operator_divide': return binary('NUM1', 'NUM2', '/');
-    case 'operator_mod': return binary('NUM1', 'NUM2', '%');
-    case 'operator_gt': return binary('OPERAND1', 'OPERAND2', '>');
-    case 'operator_lt': return binary('OPERAND1', 'OPERAND2', '<');
-    case 'operator_equals': return binary('OPERAND1', 'OPERAND2', '==');
-    case 'operator_and': return binary('OPERAND1', 'OPERAND2', 'and');
-    case 'operator_or': return binary('OPERAND1', 'OPERAND2', 'or');
-    case 'operator_not': return `(not ${expression(blocks, input(blocks, block, 'OPERAND'), context)})`;
-    case 'operator_random':
-        return `random.randint(int(${expression(blocks, input(blocks, block, 'FROM'), context)}), ` +
-            `int(${expression(blocks, input(blocks, block, 'TO'), context)}))`;
-    case 'operator_round': return `round(${expression(blocks, input(blocks, block, 'NUM'), context)})`;
-    case 'operator_join':
-        return `(str(${expression(blocks, input(blocks, block, 'STRING1'), context)}) + ` +
-            `str(${expression(blocks, input(blocks, block, 'STRING2'), context)}))`;
-    case 'operator_length': return `len(str(${expression(blocks, input(blocks, block, 'STRING'), context)}))`;
+    case 'operator_add': return binaryCall('NUM1', 'NUM2', '_scratch_add');
+    case 'operator_subtract': return `(_scratch_num(${value('NUM1')}) - _scratch_num(${value('NUM2')}))`;
+    case 'operator_multiply': return `(_scratch_num(${value('NUM1')}) * _scratch_num(${value('NUM2')}))`;
+    case 'operator_divide': return binaryCall('NUM1', 'NUM2', '_scratch_div');
+    case 'operator_mod': return binaryCall('NUM1', 'NUM2', '_scratch_mod');
+    case 'operator_gt': return `(_scratch_compare(${value('OPERAND1')}, ${value('OPERAND2')}) > 0)`;
+    case 'operator_lt': return `(_scratch_compare(${value('OPERAND1')}, ${value('OPERAND2')}) < 0)`;
+    case 'operator_equals': return `(_scratch_compare(${value('OPERAND1')}, ${value('OPERAND2')}) == 0)`;
+    case 'operator_and': return `(_scratch_bool(${value('OPERAND1')}) and _scratch_bool(${value('OPERAND2')}))`;
+    case 'operator_or': return `(_scratch_bool(${value('OPERAND1')}) or _scratch_bool(${value('OPERAND2')}))`;
+    case 'operator_not': return `(not _scratch_bool(${value('OPERAND')}))`;
+    case 'operator_random': return binaryCall('FROM', 'TO', '_scratch_random');
+    case 'operator_round': return `round(_scratch_num(${value('NUM')}))`;
+    case 'operator_join': return `(_scratch_str(${value('STRING1')}) + _scratch_str(${value('STRING2')}))`;
+    case 'operator_length': return `len(_scratch_str(${value('STRING')}))`;
     case 'operator_contains':
-        return `(str(${expression(blocks, input(blocks, block, 'STRING2'), context)}) in ` +
-            `str(${expression(blocks, input(blocks, block, 'STRING1'), context)}))`;
-    case 'operator_letter_of':
-        return `str(${expression(blocks, input(blocks, block, 'STRING'), context)})[` +
-            `int(${expression(blocks, input(blocks, block, 'LETTER'), context)}) - 1]`;
+        return `(_scratch_str(${value('STRING2')}).lower() in _scratch_str(${value('STRING1')}).lower())`;
+    case 'operator_letter_of': return `_scratch_letter(${value('LETTER')}, ${value('STRING')})`;
     default: {
         const quickExpression = compileQuickExtensionReporter(blocks, block, context, expression);
         if (quickExpression !== null) return quickExpression;
