@@ -6,11 +6,10 @@
 
 本仓库最初来自官方 `scratchfoundation/scratch-desktop`，之后已经做了较多产品化和硬件相关改造，产品名为 **“一一编程乐园”**。后续 AI 修改代码时不要把它当成“接近官方原版”的仓库处理。
 
-当前 iOS 迁移工作使用分支：`ios-migration-v1`。
+iOS 迁移阶段已经完成并合并回 `main`。后续日常开发以 `main` 为基线；`ios-migration-v1` 保留为历史迁移分支，不再作为默认开发分支。
 
-- 不要修改 `main`。
-- 不要创建 PR。
-- 需要改代码时直接提交到 `ios-migration-v1`。
+- 默认直接提交到 `main`。
+- 不要创建 PR，除非用户明确要求。
 - 桌面 Electron 版本仍需保留，iOS 是新增运行外壳，不是用 iOS 完全替代桌面版。
 - iOS Web 构建命令：`npm run build:ios:web`
 - iOS Web 输出目录：`ios/App/Web`
@@ -125,7 +124,7 @@ iOS 版没有迁移 USB，ESP32 通信走 Swift `CoreBluetooth` 原生桥接；�
 2. 不要因为官方 Scratch 的实现方式不同，就直接把现有定制逻辑覆盖回官方版本。
 3. 改大文件时尽量做最小 diff，避免顺手格式化或带入无关改动。
 4. 修改 BLE、保存、新建作品、iOS 标题恢复、板上输出后，要优先检查已知回归点。
-5. 未经明确要求，不要改 `main`，也不要创建 PR。
+5. 后续默认直接在 `main` 开发和提交，不创建 PR；只有用户明确要求时才另开分支或创建 PR。
 
 ## ESP32 MicroPython BLE UART 连接状态
 
