@@ -7,6 +7,11 @@ import {
     saveQuickExtensionConfig
 } from './QuickExtensionRegistry';
 import {syncQuickExtensionsToLibrary} from './QuickExtensionLibrary';
+import {
+    forgetQuickExtensionState,
+    isQuickExtensionEnabled,
+    setQuickExtensionEnabled
+} from './QuickExtensionState';
 
 const BUTTON_ID = 'yiyi-quick-extension-manager-button';
 const OVERLAY_ID = 'yiyi-quick-extension-manager-overlay';
@@ -187,8 +192,9 @@ const openManager = (vm, onActivate) => {
     const copyJson = actionButton('复制当前 JSON');
     const remove = actionButton('删除', false, true);
     const save = actionButton('保存');
+    const toggleEnabled = actionButton('启用/停用');
     const saveAndEnable = actionButton('保存并启用', true);
-    actions.append(copyJson, remove, save, saveAndEnable);
+    actions.append(copyJson, remove, save, toggleEnabled, saveAndEnable);
     editorColumn.append(editorLabel, editor, status, actions);
     body.append(sidebar, editorColumn);
     panel.append(header, body);
@@ -200,25 +206,46 @@ const openManager = (vm, onActivate) => {
         status.style.color = isError ? '#bd2020' : '#3f5f50';
     };
 
+    const updateToggleButton = () => {
+        const id = select.value;
+        if (!id) {
+            toggleEnabled.disabled = true;
+            toggleEnabled.textContent = '启用/停用';
+            return;
+        }
+        toggleEnabled.disabled = false;
+        toggleEnabled.textContent = isQuickExtensionEnabled(id) ? '停用' : '启用';
+    };
+
     const refreshSelect = selectedId => {
         const configs = loadQuickExtensions();
         select.textContent = '';
         configs.forEach(config => {
             const option = document.createElement('option');
             option.value = config.id;
-            option.textContent = `${config.name} (${config.id})`;
+            const state = isQuickExtensionEnabled(config.id) ? '已启用' : '已停用';
+            option.textContent = `[${state}] ${config.name} (${config.id})`;
             select.appendChild(option);
         });
         if (selectedId && configs.some(config => config.id === selectedId)) {
             select.value = selectedId;
         }
+        updateToggleButton();
     };
 
     const loadSelected = () => {
         const config = loadQuickExtensions().find(item => item.id === select.value);
-        if (!config) return;
+        if (!config) {
+            updateToggleButton();
+            return;
+        }
         editor.value = JSON.stringify(config, null, 2);
-        setStatus('可以直接修改积木定义或 python 代码后保存。');
+        updateToggleButton();
+        if (isQuickExtensionEnabled(config.id)) {
+            setStatus('当前为已启用状态。可以直接修改积木定义或 python 代码后保存。');
+        } else {
+            setStatus('当前为已停用状态，不会显示在扩展选择页；配置仍然保留。');
+        }
     };
 
     const saveEditor = async enable => {
@@ -227,6 +254,7 @@ const openManager = (vm, onActivate) => {
             const manager = vm && vm.extensionManager;
             const wasLoaded = Boolean(manager && parsed && parsed.id && manager.isExtensionLoaded(parsed.id));
             const config = saveQuickExtensionConfig(parsed);
+            if (enable) setQuickExtensionEnabled(config.id, true);
             syncQuickExtensionsToLibrary();
             refreshSelect(config.id);
             editor.value = JSON.stringify(config, null, 2);
@@ -238,8 +266,10 @@ const openManager = (vm, onActivate) => {
                 setStatus('已保存。MicroPython 生成规则立即生效；如果改了积木文字、参数或菜单，重启应用后会完整刷新。');
             } else if (enable) {
                 setStatus('已保存并启用。关闭扩展页面后即可看到新的积木分类。');
+            } else if (isQuickExtensionEnabled(config.id)) {
+                setStatus('已保存，启用状态未改变。');
             } else {
-                setStatus('已保存。重新打开“选择一个扩展”页面即可看到扩展卡片。');
+                setStatus('已保存，当前仍为停用状态。');
             }
         } catch (error) {
             setStatus(`保存失败：${error.message}`, true);
@@ -250,6 +280,7 @@ const openManager = (vm, onActivate) => {
     newExample.addEventListener('click', () => {
         editor.value = JSON.stringify(QUICK_EXTENSION_EXAMPLE, null, 2);
         select.selectedIndex = -1;
+        updateToggleButton();
         setStatus('这是可直接运行的多彩 LED 示例。修改 id、名称或积木后再保存。');
     });
     copyRules.addEventListener('click', async () => {
@@ -270,6 +301,40 @@ const openManager = (vm, onActivate) => {
     });
     save.addEventListener('click', () => saveEditor(false));
     saveAndEnable.addEventListener('click', () => saveEditor(true));
+    toggleEnabled.addEventListener('click', async () => {
+        const id = select.value;
+        if (!id) {
+            setStatus('请先从左侧选择要启用或停用的扩展。', true);
+            return;
+        }
+        const config = loadQuickExtensions().find(item => item.id === id);
+        if (!config) {
+            setStatus('找不到选中的扩展配置。', true);
+            return;
+        }
+        const currentlyEnabled = isQuickExtensionEnabled(id);
+        try {
+            if (currentlyEnabled) {
+                setQuickExtensionEnabled(id, false);
+                syncQuickExtensionsToLibrary();
+                refreshSelect(id);
+                const manager = vm && vm.extensionManager;
+                const loaded = Boolean(manager && manager.isExtensionLoaded(id));
+                setStatus(loaded ?
+                    '已停用并从扩展选择页隐藏。当前会话已经加载的积木分类会保留到应用重启。' :
+                    '已停用并从扩展选择页隐藏。配置仍然保留，可随时重新启用。');
+            } else {
+                setQuickExtensionEnabled(id, true);
+                syncQuickExtensionsToLibrary();
+                refreshSelect(id);
+                await registerQuickExtension(vm, config);
+                if (typeof onActivate === 'function') onActivate(config);
+                setStatus('已启用。关闭扩展页面后即可使用该扩展积木。');
+            }
+        } catch (error) {
+            setStatus(`切换启用状态失败：${error.message}`, true);
+        }
+    });
     remove.addEventListener('click', () => {
         const id = select.value;
         if (!id) {
@@ -278,6 +343,7 @@ const openManager = (vm, onActivate) => {
         }
         if (!window.confirm(`确定删除快捷扩展 ${id} 吗？`)) return;
         if (deleteQuickExtensionConfig(id)) {
+            forgetQuickExtensionState(id);
             syncQuickExtensionsToLibrary();
             editor.value = '';
             refreshSelect();
@@ -294,6 +360,7 @@ const openManager = (vm, onActivate) => {
         loadSelected();
     } else {
         editor.value = JSON.stringify(QUICK_EXTENSION_EXAMPLE, null, 2);
+        updateToggleButton();
         setStatus('还没有快捷扩展。可直接从多彩 LED 示例开始，或者复制规则让 AI 生成。');
     }
 };
