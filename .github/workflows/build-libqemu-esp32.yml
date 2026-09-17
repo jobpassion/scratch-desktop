@@ -17,8 +17,16 @@ permissions:
 
 jobs:
   build-libqemu-xtensa:
-    name: Build libqemu-xtensa.so
-    runs-on: ubuntu-22.04
+    name: Build libqemu-xtensa.so (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
       QEMU_REF: ${{ inputs.qemu_ref || 'picsimlab-esp32' }}
@@ -26,6 +34,11 @@ jobs:
     steps:
       - name: Checkout scratch-desktop patches
         uses: actions/checkout@v4
+
+      - name: Show runner architecture
+        run: |
+          uname -a
+          uname -m
 
       - name: Install QEMU build dependencies
         run: |
@@ -45,6 +58,7 @@ jobs:
           git checkout "$QEMU_REF"
           echo "QEMU_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           git rev-parse HEAD > ../QEMU_COMMIT.txt
+          uname -m > ../BUILD_ARCH.txt
 
       - name: Locate ESP32 RMT callback
         run: |
@@ -81,17 +95,20 @@ jobs:
         run: |
           test -f qemu-lcgamboa/build/libqemu-xtensa.so
           ls -lh qemu-lcgamboa/build/libqemu-xtensa.so
-          file qemu-lcgamboa/build/libqemu-xtensa.so
+          file qemu-lcgamboa/build/libqemu-xtensa.so | tee LIBQEMU_FILE.txt
           nm -D qemu-lcgamboa/build/libqemu-xtensa.so | grep -E 'qemu_(init|main_loop|picsimlab)' | head -50 || true
           echo "Built from lcgamboa/qemu commit: $QEMU_COMMIT"
+          echo "Requested artifact architecture: ${{ matrix.arch }}"
 
       - name: Upload libqemu artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libqemu-xtensa-rmt-frame-end-${{ env.QEMU_COMMIT }}
+          name: libqemu-xtensa-${{ matrix.arch }}-rmt-frame-end-${{ env.QEMU_COMMIT }}
           path: |
             qemu-lcgamboa/build/libqemu-xtensa.so
             QEMU_COMMIT.txt
+            BUILD_ARCH.txt
+            LIBQEMU_FILE.txt
             QEMU_APPLIED.diff
             RMT_LOCATIONS.txt
           if-no-files-found: error
