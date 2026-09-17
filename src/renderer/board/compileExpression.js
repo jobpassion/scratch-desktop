@@ -1,3 +1,5 @@
+import {compileQuickExtensionReporter} from './QuickExtensionRegistry';
+
 export const field = (block, name) => block.fields && block.fields[name] && block.fields[name].value;
 
 export const input = (blocks, block, name) => {
@@ -73,6 +75,10 @@ export const expression = (blocks, block, context) => {
     case 'operator_letter_of':
         return `str(${expression(blocks, input(blocks, block, 'STRING'), context)})[` +
             `int(${expression(blocks, input(blocks, block, 'LETTER'), context)}) - 1]`;
-    default: return unsupported(block);
+    default: {
+        const quickExpression = compileQuickExtensionReporter(blocks, block, context, expression);
+        if (quickExpression !== null) return quickExpression;
+        return unsupported(block);
+    }
     }
 };

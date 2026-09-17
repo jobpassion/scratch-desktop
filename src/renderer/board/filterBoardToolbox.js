@@ -1,3 +1,5 @@
+import {isQuickExtensionId} from './QuickExtensionRegistry';
+
 const CATEGORIES = new Set(['events', 'control', 'operators', 'variables', 'myBlocks', 'esp32gpio']);
 const BLOCKS = {
     events: new Set(['event_whenflagclicked']),
@@ -21,11 +23,12 @@ const filterBoardToolbox = (source, boardMode) => {
     const root = document.documentElement;
     Array.from(root.children).forEach(category => {
         const id = category.getAttribute('id');
+        const quickCategory = isQuickExtensionId(id);
         if (!boardMode) {
-            if (id === 'esp32gpio') root.removeChild(category);
+            if (id === 'esp32gpio' || quickCategory) root.removeChild(category);
             return;
         }
-        if (category.tagName !== 'category' || !CATEGORIES.has(id)) {
+        if (category.tagName !== 'category' || (!CATEGORIES.has(id) && !quickCategory)) {
             root.removeChild(category);
             return;
         }

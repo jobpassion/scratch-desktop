@@ -3,6 +3,7 @@ import {compose} from 'redux';
 import GUI, {AppStateHOC} from '@scratch/scratch-gui';
 
 import ScratchIOSAppStateHOC from './ScratchIOSAppStateHOC.jsx';
+import QuickExtensionHOC from './QuickExtensionHOC.jsx';
 import ScratchDesktopGUIHOC from './ScratchDesktopGUIHOC.jsx';
 import styles from './app.css';
 import './ios.css';
@@ -15,6 +16,7 @@ GUI.setAppElement(appTarget);
 const WrappedGui = compose(
     ScratchIOSAppStateHOC,
     AppStateHOC,
+    QuickExtensionHOC,
     ScratchDesktopGUIHOC
 )(GUI);
 

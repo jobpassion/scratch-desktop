@@ -1,4 +1,8 @@
 import {expression, field, input, literal, unsupported} from './compileExpression';
+import {
+    compileQuickExtensionCommand,
+    getQuickExtensionPythonSupport
+} from './QuickExtensionRegistry';
 
 const PINS = new Set([
     '2', '4', '5', '12', '13', '14', '15', '16', '17', '18', '19',
@@ -12,6 +16,10 @@ const safeSymbol = id => Array.from(String(id))
     .map(char => char.charCodeAt(0).toString(16))
     .join('_');
 const procedureKey = (target, code) => `${target.id}:${code}`;
+const indentSnippet = (source, indent) => String(source)
+    .split('\n')
+    .map(line => `${indent}${line}`)
+    .join('\n');
 
 const compileStack = (blocks, firstId, indent, context, seen = new Set()) => {
     const lines = [];
@@ -93,7 +101,11 @@ const compileStack = (blocks, firstId, indent, context, seen = new Set()) => {
             lines.push(`${indent}${definition.symbol}(${args.join(', ')})`);
             break;
         }
-        default: unsupported(block);
+        default: {
+            const quickCode = compileQuickExtensionCommand(blocks, block, context, expression);
+            if (quickCode === null) unsupported(block);
+            lines.push(indentSnippet(quickCode, indent));
+        }
         }
         id = block.next;
     }
@@ -131,6 +143,7 @@ const compileESP32 = vm => {
             });
         });
     });
+    const usedQuickExtensions = new Set();
     const globalNames = [...variables.values()].map(variable => variable.symbol).join(', ');
     const makeContext = (target, parameters = null) => ({
         target,
@@ -138,6 +151,7 @@ const compileESP32 = vm => {
         procedures,
         pins: PINS,
         analogPins: ANALOG_PINS,
+        useQuickExtension: id => usedQuickExtensions.add(id),
         variable: block => {
             const variable = variables.get(variableId(block));
             if (!variable) throw new Error(`找不到变量“${field(block, 'VARIABLE')}”。`);
@@ -163,10 +177,12 @@ const compileESP32 = vm => {
     if (!scripts.length) throw new Error('请添加“当绿旗被点击”以及 ESP32 积木。');
     if (scripts.length > 1) throw new Error('第一版板上程序只能有一组绿旗脚本，请合并后再发送。');
     const initializers = [...variables.values()].map(variable => `${variable.symbol} = ${literal(variable.initial)}`);
+    const quickSupport = getQuickExtensionPythonSupport(usedQuickExtensions);
     return `${[
         'from machine import Pin, ADC, PWM',
         'from time import sleep',
         'import random',
+        ...quickSupport.imports,
         `_board_print_prefix = ${literal(BOARD_PRINT_PREFIX)}`,
         'def _board_print(value):\n' +
             "    for line in str(value).split('\\n'):\n" +
@@ -183,6 +199,7 @@ const compileESP32 = vm => {
             '    if pin not in _pwm_outputs:\n' +
             '        _pwm_outputs[pin] = PWM(Pin(pin), freq=1000)\n' +
             '    _pwm_outputs[pin].duty(max(0, min(1023, int(value))))',
+        ...quickSupport.helpers,
         ...initializers,
         ...functions,
         ...scripts
