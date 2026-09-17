@@ -1,5 +1,7 @@
 const DISABLED_STORAGE_KEY = 'yiyi-quick-extension-disabled-v1';
 
+export const QUICK_EXTENSION_STATE_EVENT = 'yiyi-quick-extension-state-change';
+
 const readDisabledIds = () => {
     try {
         const raw = window.localStorage.getItem(DISABLED_STORAGE_KEY);
@@ -17,6 +19,12 @@ const writeDisabledIds = ids => {
     window.localStorage.setItem(DISABLED_STORAGE_KEY, JSON.stringify([...ids].sort()));
 };
 
+const notifyStateChanged = (id, enabled) => {
+    window.dispatchEvent(new CustomEvent(QUICK_EXTENSION_STATE_EVENT, {
+        detail: {id, enabled}
+    }));
+};
+
 export const isQuickExtensionEnabled = id => !readDisabledIds().has(id);
 
 export const setQuickExtensionEnabled = (id, enabled) => {
@@ -24,6 +32,7 @@ export const setQuickExtensionEnabled = (id, enabled) => {
     if (enabled) ids.delete(id);
     else ids.add(id);
     writeDisabledIds(ids);
+    notifyStateChanged(id, enabled);
     return enabled;
 };
 
@@ -31,5 +40,6 @@ export const forgetQuickExtensionState = id => {
     const ids = readDisabledIds();
     if (!ids.delete(id)) return false;
     writeDisabledIds(ids);
+    notifyStateChanged(id, true);
     return true;
 };
