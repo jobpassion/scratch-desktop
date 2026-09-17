@@ -1,0 +1,18 @@
+diff --git a/hw/ssi/esp32_rmt.c b/hw/ssi/esp32_rmt.c
+--- a/hw/ssi/esp32_rmt.c
++++ b/hw/ssi/esp32_rmt.c
+@@ -57,6 +57,13 @@ static void send_data(Esp32RmtState *s, int channel) {
+             v = s->data[((i+s->sent)%memsize+channel*64)%ESP32_RMT_BUF_WORDS];
+         }
+         if(v==0) { // stop sending when we see a zero
++            /*
++             * RMT memory uses an all-zero item as the TX terminator.  Keep it
++             * out of the SSI data stream, but forward it to libqemu clients so
++             * they can observe the real end of transmission.  Velxio's WS2812
++             * decoder uses value == 0 to flush all accumulated 24-bit pixels
++             * as one frame instead of incorrectly flushing every pixel.
++             */
++            picsimlab_rmt_event(channel, s->conf0[channel], 0);
+             s->int_raw|=(1<<(channel*3)); //set TX_END
+             s->int_raw&=~(1<<(channel+24)); //clearTHR
+             s->sent=0;
