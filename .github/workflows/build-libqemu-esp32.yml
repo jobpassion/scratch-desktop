@@ -7,6 +7,10 @@ on:
         description: "Optional exact Velxio asset name qemu-source-<commit>; leave blank to auto-detect when the manifest contains exactly one"
         required: false
         default: ""
+  push:
+    paths:
+      - ".github/workflows/build-libqemu-esp32.yml"
+      - "patches/qemu/**"
 
 permissions:
   contents: read
