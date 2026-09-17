@@ -53,20 +53,14 @@ jobs:
 
           SOURCE_ASSET="${REQUESTED_SOURCE_ASSET:-}"
           if [ -z "$SOURCE_ASSET" ]; then
-            SOURCE_ASSET="$(python3 - <<'PY'
-import re
-from pathlib import Path
-
-text = Path('velxio-downloads.json').read_text(encoding='utf-8')
-assets = sorted(set(re.findall(r'qemu-source-[0-9a-fA-F]{7,40}', text)))
-if len(assets) != 1:
-    raise SystemExit(
-        'Could not auto-select Velxio QEMU source archive: found '
-        f'{len(assets)} candidates: {assets}. Re-run the workflow and set source_asset explicitly.'
-    )
-print(assets[0])
-PY
-)"
+            mapfile -t SOURCE_ASSETS < <(
+              grep -oE 'qemu-source-[0-9a-fA-F]{7,40}' velxio-downloads.json | sort -u
+            )
+            if [ "${#SOURCE_ASSETS[@]}" -ne 1 ]; then
+              echo "::error::Could not auto-select Velxio QEMU source archive. Found ${#SOURCE_ASSETS[@]} candidates: ${SOURCE_ASSETS[*]:-none}. Re-run manually and set source_asset explicitly."
+              exit 1
+            fi
+            SOURCE_ASSET="${SOURCE_ASSETS[0]}"
           fi
 
           if ! [[ "$SOURCE_ASSET" =~ ^qemu-source-[0-9a-fA-F]{7,40}$ ]]; then
@@ -98,8 +92,6 @@ PY
           test -f qemu-velxio/build_libqemu-esp32.sh
           test -f qemu-velxio/hw/ssi/esp32_rmt.c
 
-          # These files/machine names distinguish the Velxio source tree from
-          # stock lcgamboa/qemu, which is not a drop-in replacement.
           if [ ! -f qemu-velxio/hw/ssi/esp32s3_gpspi.c ]; then
             echo "::error::Downloaded source does not look like the Velxio corresponding source tree (missing hw/ssi/esp32s3_gpspi.c)."
             exit 1
