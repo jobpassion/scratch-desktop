@@ -1,35 +1,24 @@
-name: Build libqemu ESP32
+name: Build Velxio libqemu ESP32
 
 on:
   workflow_dispatch:
     inputs:
-      qemu_ref:
-        description: "lcgamboa/qemu branch, tag, or commit"
-        required: true
-        default: "picsimlab-esp32"
-  push:
-    paths:
-      - ".github/workflows/build-libqemu-esp32.yml"
-      - "patches/qemu/**"
+      source_asset:
+        description: "Optional exact Velxio asset name qemu-source-<commit>; leave blank to auto-detect when the manifest contains exactly one"
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
-  build-libqemu-xtensa:
-    name: Build libqemu-xtensa.so (${{ matrix.arch }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-22.04-arm
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+  build-libqemu-xtensa-arm64:
+    name: Build Velxio libqemu-xtensa.so (arm64)
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 90
     env:
-      QEMU_REF: ${{ inputs.qemu_ref || 'picsimlab-esp32' }}
+      VELXIO_LICENSE_KEY: ${{ secrets.VELXIO_LICENSE_KEY }}
+      VELXIO_DOWNLOAD_BASE: https://velxio.dev/api/pro/license/downloads
 
     steps:
       - name: Checkout scratch-desktop patches
@@ -39,77 +28,157 @@ jobs:
         run: |
           uname -a
           uname -m
+          test "$(uname -m)" = "aarch64"
 
-      - name: Install QEMU build dependencies
+      - name: Check Velxio source access
+        id: source
+        shell: bash
+        env:
+          REQUESTED_SOURCE_ASSET: ${{ inputs.source_asset }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git python3-pip ninja-build pkg-config flex bison \
-            gcc g++ make \
-            libglib2.0-dev libgcrypt20-dev libslirp-dev \
-            libpixman-1-dev libfdt-dev
-          python3 -m pip install --user meson
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
 
-      - name: Clone lcgamboa QEMU
-        run: |
-          git clone https://github.com/lcgamboa/qemu.git qemu-lcgamboa
-          cd qemu-lcgamboa
-          git checkout "$QEMU_REF"
-          echo "QEMU_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          git rev-parse HEAD > ../QEMU_COMMIT.txt
-          uname -m > ../BUILD_ARCH.txt
+          if [ -z "${VELXIO_LICENSE_KEY:-}" ]; then
+            echo "::error::Missing repository secret VELXIO_LICENSE_KEY. Create a free Velxio personal key, then add it as Actions secret VELXIO_LICENSE_KEY."
+            exit 1
+          fi
 
-      - name: Locate ESP32 RMT callback
-        run: |
-          grep -R -n -C 16 -E 'picsimlab_rmt_event|rmt_event' \
-            qemu-lcgamboa/hw qemu-lcgamboa/include 2>/dev/null \
-            | tee RMT_LOCATIONS.txt || true
+          curl -fsSL \
+            "${VELXIO_DOWNLOAD_BASE}?key=${VELXIO_LICENSE_KEY}" \
+            -o velxio-downloads.json
 
-      - name: Apply local QEMU patches
+          SOURCE_ASSET="${REQUESTED_SOURCE_ASSET:-}"
+          if [ -z "$SOURCE_ASSET" ]; then
+            SOURCE_ASSET="$(python3 - <<'PY'
+import re
+from pathlib import Path
+
+text = Path('velxio-downloads.json').read_text(encoding='utf-8')
+assets = sorted(set(re.findall(r'qemu-source-[0-9a-fA-F]{7,40}', text)))
+if len(assets) != 1:
+    raise SystemExit(
+        'Could not auto-select Velxio QEMU source archive: found '
+        f'{len(assets)} candidates: {assets}. Re-run the workflow and set source_asset explicitly.'
+    )
+print(assets[0])
+PY
+)"
+          fi
+
+          if ! [[ "$SOURCE_ASSET" =~ ^qemu-source-[0-9a-fA-F]{7,40}$ ]]; then
+            echo "::error::Invalid source_asset: $SOURCE_ASSET"
+            exit 1
+          fi
+
+          echo "Using Velxio source asset: $SOURCE_ASSET"
+          echo "source_asset=$SOURCE_ASSET" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$SOURCE_ASSET" > VELXIO_QEMU_SOURCE_ASSET.txt
+
+      - name: Download corresponding Velxio QEMU source
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          patches=(patches/qemu/*.patch)
-          if (( ${#patches[@]} == 0 )); then
-            echo "ERROR: no QEMU patches found" >&2
+          SOURCE_ASSET='${{ steps.source.outputs.source_asset }}'
+
+          curl -fSL \
+            -o velxio-qemu-source.tar.gz \
+            "${VELXIO_DOWNLOAD_BASE}/${SOURCE_ASSET}?key=${VELXIO_LICENSE_KEY}"
+
+          sha256sum velxio-qemu-source.tar.gz | tee VELXIO_QEMU_SOURCE_SHA256.txt
+          tar -tzf velxio-qemu-source.tar.gz | head -40 | tee VELXIO_QEMU_SOURCE_HEAD.txt
+
+          rm -rf qemu-velxio
+          mkdir qemu-velxio
+          tar -xzf velxio-qemu-source.tar.gz -C qemu-velxio --strip-components=1
+
+          test -f qemu-velxio/build_libqemu-esp32.sh
+          test -f qemu-velxio/hw/ssi/esp32_rmt.c
+
+          # These files/machine names distinguish the Velxio source tree from
+          # stock lcgamboa/qemu, which is not a drop-in replacement.
+          if [ ! -f qemu-velxio/hw/ssi/esp32s3_gpspi.c ]; then
+            echo "::error::Downloaded source does not look like the Velxio corresponding source tree (missing hw/ssi/esp32s3_gpspi.c)."
             exit 1
           fi
-          for patch in "${patches[@]}"; do
-            echo "Applying $patch"
-            git -C qemu-lcgamboa apply --check "../$patch"
-            git -C qemu-lcgamboa apply "../$patch"
-          done
-          git -C qemu-lcgamboa diff --check
-          git -C qemu-lcgamboa diff -- hw/ssi/esp32_rmt.c | tee QEMU_APPLIED.diff
+          grep -R -n -m1 'esp32s3-picsimlab' qemu-velxio/hw | tee VELXIO_MACHINE_CHECK.txt
+
+      - name: Install QEMU build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential git wget curl \
+            python3-pip python3-setuptools \
+            ninja-build pkg-config flex bison \
+            libglib2.0-dev libgcrypt20-dev libslirp-dev \
+            libpixman-1-dev libfdt-dev zlib1g-dev jq dpkg-dev
+
+          python3 -m pip install --user 'meson==1.2.3' tomli
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+          LIBDIR="$(dpkg-architecture -q DEB_HOST_MULTIARCH)"
+          sudo ar rcs "/usr/lib/${LIBDIR}/libiconv.a"
+
+      - name: Inspect original ESP32 RMT terminator path
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -n -C 14 -E 'if[[:space:]]*\([[:space:]]*v[[:space:]]*==[[:space:]]*0|picsimlab_rmt_event' \
+            qemu-velxio/hw/ssi/esp32_rmt.c \
+            | tee RMT_BEFORE_PATCH.txt
+
+      - name: Apply RMT frame-end patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qemu-velxio
+          patch -p1 --forward < ../patches/qemu/esp32-rmt-forward-tx-terminator.patch
+
           grep -q 'picsimlab_rmt_event(channel, s->conf0\[channel\], 0);' \
-            qemu-lcgamboa/hw/ssi/esp32_rmt.c
+            hw/ssi/esp32_rmt.c
+          grep -n -C 14 -E 'if[[:space:]]*\([[:space:]]*v[[:space:]]*==[[:space:]]*0|picsimlab_rmt_event' \
+            hw/ssi/esp32_rmt.c \
+            | tee ../RMT_AFTER_PATCH.txt
 
       - name: Build shared library
-        working-directory: qemu-lcgamboa
+        working-directory: qemu-velxio
+        shell: bash
         run: |
+          set -euo pipefail
           bash build_libqemu-esp32.sh
 
-      - name: Verify artifact
+      - name: Verify artifact and Velxio callback ABI
+        shell: bash
         run: |
-          test -f qemu-lcgamboa/build/libqemu-xtensa.so
-          ls -lh qemu-lcgamboa/build/libqemu-xtensa.so
-          file qemu-lcgamboa/build/libqemu-xtensa.so | tee LIBQEMU_FILE.txt
-          nm -D qemu-lcgamboa/build/libqemu-xtensa.so | grep -E 'qemu_(init|main_loop|picsimlab)' | head -50 || true
-          echo "Built from lcgamboa/qemu commit: $QEMU_COMMIT"
-          echo "Requested artifact architecture: ${{ matrix.arch }}"
+          set -euo pipefail
+          LIB=qemu-velxio/build/libqemu-xtensa.so
+          test -f "$LIB"
+          ls -lh "$LIB"
+          file "$LIB" | tee LIBQEMU_FILE.txt
+          file "$LIB" | grep -Eq 'ARM aarch64|aarch64'
 
-      - name: Upload libqemu artifact
+          nm -D "$LIB" \
+            | grep -E 'qemu_(init|main_loop|cleanup|picsimlab_register_callbacks|picsimlab_set_pin|picsimlab_uart_receive)' \
+            | tee LIBQEMU_EXPORTS.txt
+
+          grep -q 'qemu_picsimlab_register_callbacks' LIBQEMU_EXPORTS.txt
+          strings "$LIB" | grep -m1 'esp32-picsimlab' | tee LIBQEMU_MACHINE.txt
+
+      - name: Upload patched Velxio libqemu artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libqemu-xtensa-${{ matrix.arch }}-rmt-frame-end-${{ env.QEMU_COMMIT }}
+          name: velxio-libqemu-xtensa-arm64-rmt-frame-end-${{ steps.source.outputs.source_asset }}
           path: |
-            qemu-lcgamboa/build/libqemu-xtensa.so
-            QEMU_COMMIT.txt
-            BUILD_ARCH.txt
+            qemu-velxio/build/libqemu-xtensa.so
+            VELXIO_QEMU_SOURCE_ASSET.txt
+            VELXIO_QEMU_SOURCE_SHA256.txt
+            VELXIO_QEMU_SOURCE_HEAD.txt
+            VELXIO_MACHINE_CHECK.txt
             LIBQEMU_FILE.txt
-            QEMU_APPLIED.diff
-            RMT_LOCATIONS.txt
+            LIBQEMU_EXPORTS.txt
+            LIBQEMU_MACHINE.txt
+            RMT_BEFORE_PATCH.txt
+            RMT_AFTER_PATCH.txt
           if-no-files-found: error
           retention-days: 14
