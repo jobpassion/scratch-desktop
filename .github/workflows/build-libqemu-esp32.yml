@@ -7,6 +7,9 @@ on:
         description: "lcgamboa/qemu branch, tag, or commit"
         required: true
         default: "picsimlab-esp32"
+  push:
+    paths:
+      - ".github/workflows/build-libqemu-esp32.yml"
 
 permissions:
   contents: read
@@ -16,6 +19,8 @@ jobs:
     name: Build libqemu-xtensa.so
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    env:
+      QEMU_REF: ${{ inputs.qemu_ref || 'picsimlab-esp32' }}
 
     steps:
       - name: Install QEMU build dependencies
@@ -33,7 +38,7 @@ jobs:
         run: |
           git clone https://github.com/lcgamboa/qemu.git qemu-lcgamboa
           cd qemu-lcgamboa
-          git checkout "${{ inputs.qemu_ref }}"
+          git checkout "$QEMU_REF"
           echo "QEMU_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           git rev-parse HEAD > ../QEMU_COMMIT.txt
 
