@@ -1,4 +1,4 @@
-import extensionLibraryContent from '@scratch/scratch-gui/src/lib/libraries/extensions/index.jsx';
+import extensionLibraryContent from '../../../node_modules/@scratch/scratch-gui/src/lib/libraries/extensions/index.jsx';
 
 import {loadQuickExtensions} from './QuickExtensionRegistry';
 
