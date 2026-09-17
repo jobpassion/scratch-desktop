@@ -151,7 +151,7 @@ jobs:
           fi
 
           sha256sum velxio-qemu-source.tar.gz | tee VELXIO_QEMU_SOURCE_SHA256.txt
-          tar -tzf velxio-qemu-source.tar.gz | head -40 | tee VELXIO_QEMU_SOURCE_HEAD.txt
+          tar -tzf velxio-qemu-source.tar.gz | sed -n '1,40p' | tee VELXIO_QEMU_SOURCE_HEAD.txt
 
           rm -rf qemu-velxio
           mkdir qemu-velxio
