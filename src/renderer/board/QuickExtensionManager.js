@@ -298,10 +298,9 @@ const openManager = (vm, onActivate) => {
     }
 };
 
-export const syncQuickExtensionManagerEntry = (vm, onActivate) => {
-    const library = document.getElementById('extensionLibrary');
+export const syncQuickExtensionManagerEntry = (vm, onActivate, visible) => {
     let button = document.getElementById(BUTTON_ID);
-    if (!library) {
+    if (!visible) {
         if (button) button.remove();
         return;
     }
