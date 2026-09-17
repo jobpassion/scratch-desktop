@@ -2,12 +2,12 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import {connect} from 'react-redux';
 
-import {installQuickExtensionLoader} from './QuickExtensionRegistry';
-import {syncQuickExtensionsToLibrary} from './QuickExtensionLibrary';
+import {installQuickExtensionLoader} from './board/QuickExtensionRegistry';
+import {syncQuickExtensionsToLibrary} from './board/QuickExtensionLibrary';
 import {
     removeQuickExtensionManagerEntry,
     syncQuickExtensionManagerEntry
-} from './QuickExtensionManager';
+} from './board/QuickExtensionManager';
 
 const QuickExtensionHOC = WrappedComponent => {
     class QuickExtensionComponent extends React.Component {
