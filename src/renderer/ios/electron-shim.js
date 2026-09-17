@@ -12,6 +12,62 @@ const decodeProjectResult = result => {
     return NativeBridge.base64ToBytes(result.data);
 };
 
+const findScratchStore = () => {
+    const titleInput = document.querySelector('div[class*="menu-bar_menu-bar"] input');
+    if (!titleInput) return null;
+
+    const fiberKey = Object.keys(titleInput).find(key =>
+        key.startsWith('__reactInternalInstance$') || key.startsWith('__reactFiber$')
+    );
+    let fiber = fiberKey ? titleInput[fiberKey] : null;
+
+    while (fiber) {
+        if (
+            fiber.stateNode &&
+            fiber.stateNode.context &&
+            fiber.stateNode.context.store &&
+            typeof fiber.stateNode.context.store.dispatch === 'function'
+        ) {
+            return fiber.stateNode.context.store;
+        }
+
+        if (
+            fiber.memoizedProps &&
+            fiber.memoizedProps.store &&
+            typeof fiber.memoizedProps.store.dispatch === 'function'
+        ) {
+            return fiber.memoizedProps.store;
+        }
+
+        fiber = fiber.return;
+    }
+
+    return null;
+};
+
+const dispatchProjectTitle = title => {
+    const store = window.__YYReduxStore || findScratchStore();
+    if (!store) return false;
+
+    window.__YYReduxStore = store;
+    store.dispatch({
+        type: 'projectTitle/SET_PROJECT_TITLE',
+        title
+    });
+    return true;
+};
+
+const scheduleProjectTitleRestore = title => {
+    [0, 50, 200, 500].forEach(delay => {
+        window.setTimeout(() => {
+            const restored = dispatchProjectTitle(title);
+            if (!restored && delay === 500) {
+                console.warn('[iOS] failed to restore project title through Scratch Redux');
+            }
+        }, delay);
+    });
+};
+
 const readStoredBoardMode = () => {
     try {
         const value = window.localStorage.getItem(boardModeStorageKey);
@@ -175,6 +231,9 @@ const on = (channel, handler) => {
         } else if (channel === 'board-simulation-status') {
             handler({}, hasOwn(payload, 'status') ? payload.status : payload);
         } else {
+            if (channel === 'setTitleFromSave' && payload && payload.title) {
+                scheduleProjectTitleRestore(payload.title);
+            }
             handler({}, payload);
         }
     });
@@ -188,6 +247,7 @@ const on = (channel, handler) => {
     if (channel === 'setTitleFromSave' && pendingInitialProjectTitle) {
         const title = pendingInitialProjectTitle;
         pendingInitialProjectTitle = null;
+        scheduleProjectTitleRestore(title);
         window.setTimeout(() => handler({}, {title}), 0);
     }
 
