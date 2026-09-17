@@ -58,10 +58,13 @@ const dispatchProjectTitle = title => {
 };
 
 const scheduleProjectTitleRestore = title => {
-    [0, 50, 200, 500].forEach(delay => {
+    // Scratch can replace projectTitle several times while the initial sb3 is loading.
+    // Re-dispatch the verified Redux action across the startup window so the saved
+    // filename wins after the GUI has finished settling.
+    [0, 100, 250, 500, 1000, 2000, 4000, 7000].forEach(delay => {
         window.setTimeout(() => {
             const restored = dispatchProjectTitle(title);
-            if (!restored && delay === 500) {
+            if (!restored && delay === 7000) {
                 console.warn('[iOS] failed to restore project title through Scratch Redux');
             }
         }, delay);
@@ -185,9 +188,12 @@ const send = (channel, payload) => {
         });
         break;
     case 'projectDidLoad':
-        // Loading a project can change boardMode based on its block contents in
-        // the shared desktop HOC. Re-apply the user's last UI mode after loading.
+        // Loading a project can change boardMode and can also reset projectTitle.
+        // Re-apply both persisted UI states after the project load event.
         scheduleBoardProgrammingModeRestore();
+        if (pendingInitialProjectTitle) {
+            scheduleProjectTitleRestore(pendingInitialProjectTitle);
+        }
         break;
     case 'open-about-window':
         NativeBridge.call('openAbout').catch(console.error);
@@ -246,7 +252,6 @@ const on = (channel, handler) => {
 
     if (channel === 'setTitleFromSave' && pendingInitialProjectTitle) {
         const title = pendingInitialProjectTitle;
-        pendingInitialProjectTitle = null;
         scheduleProjectTitleRestore(title);
         window.setTimeout(() => handler({}, {title}), 0);
     }
