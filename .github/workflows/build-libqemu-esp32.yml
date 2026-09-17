@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_asset:
-        description: "Optional exact Velxio asset name qemu-source-<commit>; leave blank to match against the current arm64 binary"
+        description: "Optional exact Velxio asset name qemu-source-<commit>; leave blank to select the newest corresponding source"
         required: false
         default: ""
   push:
@@ -34,7 +34,7 @@ jobs:
           uname -m
           test "$(uname -m)" = "aarch64"
 
-      - name: Match Velxio source to current arm64 binary
+      - name: Select Velxio QEMU source
         id: source
         shell: bash
         env:
@@ -62,7 +62,7 @@ jobs:
             fi
 
             echo "Source candidates: ${SOURCE_ASSETS[*]}"
-            echo "Downloading current Velxio arm64 Xtensa binary to identify its corresponding source..."
+
             curl -fSL \
               -o reference-libqemu-xtensa.so \
               "${VELXIO_DOWNLOAD_BASE}/libqemu-xtensa-arm64?key=${VELXIO_LICENSE_KEY}"
@@ -71,7 +71,10 @@ jobs:
             printf '%s\n' "$REF_SHA" > VELXIO_REFERENCE_LIB_SHA256.txt
 
             MATCHES=()
+            LATEST_DATE=""
+            LATEST_ASSET=""
             rm -f VELXIO_SOURCE_README_SUMMARY.txt
+
             for candidate in "${SOURCE_ASSETS[@]}"; do
               echo "Inspecting $candidate ..."
               tmp="source-${candidate}.tar.gz"
@@ -85,25 +88,45 @@ jobs:
                 continue
               fi
 
-              tar -xOzf "$tmp" "$readme_path" > "${candidate}.README.VELXIO-SOURCE.md"
+              readme_file="${candidate}.README.VELXIO-SOURCE.md"
+              tar -xOzf "$tmp" "$readme_path" > "$readme_file"
               echo "===== $candidate =====" >> VELXIO_SOURCE_README_SUMMARY.txt
-              grep -Ei 'commit|libqemu-xtensa|arm64|sha256|binary|correspond' \
-                "${candidate}.README.VELXIO-SOURCE.md" \
-                | head -80 >> VELXIO_SOURCE_README_SUMMARY.txt || true
+              grep -Ei 'commit|libqemu-xtensa|arm64|sha256|binary|correspond|version' \
+                "$readme_file" \
+                | head -100 >> VELXIO_SOURCE_README_SUMMARY.txt || true
 
-              if grep -qi "$REF_SHA" "${candidate}.README.VELXIO-SOURCE.md"; then
+              if grep -qi "$REF_SHA" "$readme_file"; then
                 MATCHES+=("$candidate")
                 cp "$tmp" velxio-qemu-source.tar.gz
+              fi
+
+              commit_date="$(grep -E '^- Commit date:' "$readme_file" | head -1 | sed -E 's/.*: *//' | tr -d '\r' || true)"
+              if [[ "$commit_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                echo "$candidate commit date: $commit_date"
+                if [ -z "$LATEST_DATE" ] || [[ "$commit_date" > "$LATEST_DATE" ]]; then
+                  LATEST_DATE="$commit_date"
+                  LATEST_ASSET="$candidate"
+                fi
               fi
             done
 
             cat VELXIO_SOURCE_README_SUMMARY.txt || true
 
-            if [ "${#MATCHES[@]}" -ne 1 ]; then
-              echo "::error::Expected exactly one source archive whose README records current libqemu sha256 $REF_SHA; found ${#MATCHES[@]} matches: ${MATCHES[*]:-none}."
+            if [ "${#MATCHES[@]}" -eq 1 ]; then
+              SOURCE_ASSET="${MATCHES[0]}"
+              echo "Selected exact SHA-matched source: $SOURCE_ASSET"
+            elif [ "${#MATCHES[@]}" -gt 1 ]; then
+              echo "::error::Multiple source archives claim current binary sha256 $REF_SHA: ${MATCHES[*]}"
               exit 1
+            else
+              if [ -z "$LATEST_ASSET" ]; then
+                echo "::error::No binary SHA match and no parseable source commit dates."
+                exit 1
+              fi
+              SOURCE_ASSET="$LATEST_ASSET"
+              cp "source-${SOURCE_ASSET}.tar.gz" velxio-qemu-source.tar.gz
+              echo "No README contained the binary sha256; selecting newest corresponding-source archive: $SOURCE_ASSET ($LATEST_DATE)."
             fi
-            SOURCE_ASSET="${MATCHES[0]}"
           fi
 
           if ! [[ "$SOURCE_ASSET" =~ ^qemu-source-[0-9a-fA-F]{7,40}$ ]]; then
