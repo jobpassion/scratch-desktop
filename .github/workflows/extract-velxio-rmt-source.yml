@@ -1,0 +1,42 @@
+name: Extract Velxio ESP32 RMT source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/extract-velxio-rmt-source.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  extract-rmt-source:
+    runs-on: ubuntu-22.04
+    env:
+      VELXIO_LICENSE_KEY: ${{ secrets.VELXIO_LICENSE_KEY }}
+      SOURCE_ASSET: qemu-source-83096d03
+      VELXIO_DOWNLOAD_BASE: https://velxio.dev/api/pro/license/downloads
+    steps:
+      - name: Download corresponding Velxio QEMU source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${VELXIO_LICENSE_KEY:-}"
+          curl -fSL \
+            -o velxio-qemu-source.tar.gz \
+            "${VELXIO_DOWNLOAD_BASE}/${SOURCE_ASSET}?key=${VELXIO_LICENSE_KEY}"
+          mkdir qemu-velxio
+          tar -xzf velxio-qemu-source.tar.gz -C qemu-velxio --strip-components=1
+          test -f qemu-velxio/hw/ssi/esp32_rmt.c
+          sha256sum qemu-velxio/hw/ssi/esp32_rmt.c > ESP32_RMT_SOURCE_SHA256.txt
+
+      - name: Upload exact RMT source
+        uses: actions/upload-artifact@v4
+        with:
+          name: velxio-qemu-83096d03-esp32-rmt-source
+          path: |
+            qemu-velxio/hw/ssi/esp32_rmt.c
+            qemu-velxio/include/hw/ssi/esp32_rmt.h
+            ESP32_RMT_SOURCE_SHA256.txt
+          if-no-files-found: error
+          retention-days: 3
