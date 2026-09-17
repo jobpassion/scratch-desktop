@@ -23,15 +23,19 @@ const QuickExtensionHOC = WrappedComponent => {
 
         componentDidMount () {
             this.syncManagerEntry();
-            this.managerTimer = window.setInterval(this.syncManagerEntry, 300);
         }
 
         componentDidUpdate (prevProps) {
             if (prevProps.vm !== this.props.vm) this.installForVM(this.props.vm);
+            if (
+                prevProps.vm !== this.props.vm ||
+                prevProps.extensionLibraryVisible !== this.props.extensionLibraryVisible
+            ) {
+                this.syncManagerEntry();
+            }
         }
 
         componentWillUnmount () {
-            window.clearInterval(this.managerTimer);
             this.boardModeTimers.forEach(timer => window.clearTimeout(timer));
             this.boardModeTimers = [];
             removeQuickExtensionManagerEntry();
@@ -59,7 +63,11 @@ const QuickExtensionHOC = WrappedComponent => {
         }
 
         syncManagerEntry () {
-            syncQuickExtensionManagerEntry(this.props.vm, this.handleExtensionActivated);
+            syncQuickExtensionManagerEntry(
+                this.props.vm,
+                this.handleExtensionActivated,
+                this.props.extensionLibraryVisible
+            );
         }
 
         render () {
@@ -68,12 +76,14 @@ const QuickExtensionHOC = WrappedComponent => {
     }
 
     QuickExtensionComponent.propTypes = {
+        extensionLibraryVisible: PropTypes.bool,
         vm: PropTypes.shape({
             extensionManager: PropTypes.object
         })
     };
 
     const mapStateToProps = state => ({
+        extensionLibraryVisible: state.scratchGui.modals.extensionLibrary,
         vm: state.scratchGui.vm
     });
 
