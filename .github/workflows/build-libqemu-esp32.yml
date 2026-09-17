@@ -1,0 +1,61 @@
+name: Build libqemu ESP32
+
+on:
+  workflow_dispatch:
+    inputs:
+      qemu_ref:
+        description: "lcgamboa/qemu branch, tag, or commit"
+        required: true
+        default: "picsimlab-esp32"
+
+permissions:
+  contents: read
+
+jobs:
+  build-libqemu-xtensa:
+    name: Build libqemu-xtensa.so
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Install QEMU build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git python3-pip ninja-build pkg-config flex bison \
+            gcc g++ make \
+            libglib2.0-dev libgcrypt20-dev libslirp-dev \
+            libpixman-1-dev libfdt-dev
+          python3 -m pip install --user meson
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Clone lcgamboa QEMU
+        run: |
+          git clone https://github.com/lcgamboa/qemu.git qemu-lcgamboa
+          cd qemu-lcgamboa
+          git checkout "${{ inputs.qemu_ref }}"
+          echo "QEMU_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git rev-parse HEAD > ../QEMU_COMMIT.txt
+
+      - name: Build shared library
+        working-directory: qemu-lcgamboa
+        run: |
+          bash build_libqemu-esp32.sh
+
+      - name: Verify artifact
+        run: |
+          test -f qemu-lcgamboa/build/libqemu-xtensa.so
+          ls -lh qemu-lcgamboa/build/libqemu-xtensa.so
+          file qemu-lcgamboa/build/libqemu-xtensa.so
+          nm -D qemu-lcgamboa/build/libqemu-xtensa.so | grep -E 'qemu_(init|main_loop|picsimlab)' | head -50 || true
+          echo "Built from lcgamboa/qemu commit: $QEMU_COMMIT"
+
+      - name: Upload libqemu artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libqemu-xtensa-${{ env.QEMU_COMMIT }}
+          path: |
+            qemu-lcgamboa/build/libqemu-xtensa.so
+            QEMU_COMMIT.txt
+          if-no-files-found: error
+          retention-days: 14
