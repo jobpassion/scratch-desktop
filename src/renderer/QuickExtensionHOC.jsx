@@ -5,6 +5,10 @@ import {connect} from 'react-redux';
 import {installQuickExtensionLoader} from './board/QuickExtensionRegistry';
 import {syncQuickExtensionsToLibrary} from './board/QuickExtensionLibrary';
 import {
+    installQuickExtensionPaletteFilter,
+    removeQuickExtensionPaletteFilter
+} from './board/QuickExtensionPalette';
+import {
     removeQuickExtensionManagerEntry,
     syncQuickExtensionManagerEntry
 } from './board/QuickExtensionManager';
@@ -26,7 +30,10 @@ const QuickExtensionHOC = WrappedComponent => {
         }
 
         componentDidUpdate (prevProps) {
-            if (prevProps.vm !== this.props.vm) this.installForVM(this.props.vm);
+            if (prevProps.vm !== this.props.vm) {
+                removeQuickExtensionPaletteFilter(prevProps.vm);
+                this.installForVM(this.props.vm);
+            }
             if (
                 prevProps.vm !== this.props.vm ||
                 prevProps.extensionLibraryVisible !== this.props.extensionLibraryVisible
@@ -38,11 +45,13 @@ const QuickExtensionHOC = WrappedComponent => {
         componentWillUnmount () {
             this.boardModeTimers.forEach(timer => window.clearTimeout(timer));
             this.boardModeTimers = [];
+            removeQuickExtensionPaletteFilter(this.props.vm);
             removeQuickExtensionManagerEntry();
         }
 
         installForVM (vm) {
             if (!vm) return;
+            installQuickExtensionPaletteFilter(vm);
             installQuickExtensionLoader(vm, this.handleExtensionActivated);
         }
 
