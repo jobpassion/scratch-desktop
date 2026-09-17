@@ -1,16 +1,29 @@
 diff --git a/hw/ssi/esp32_rmt.c b/hw/ssi/esp32_rmt.c
 --- a/hw/ssi/esp32_rmt.c
 +++ b/hw/ssi/esp32_rmt.c
-@@ -57,6 +57,14 @@ static void send_data(Esp32RmtState *s, int channel) {
+@@ -44,8 +44,11 @@
+     // don't send data when interrupt hasn't been handled
+     // a real device can't do this but it's necessary because 
+     // qemu can't always keep up. 
+-    if(s->int_raw & (1<<(channel+24) | (1<<(channel*3)))) {
+-        // send data when the interrupt is cleared
++    if((s->int_raw & s->int_en) & (1<<(channel+24) | (1<<(channel*3)))) {
++        // Only wait for interrupts that are still enabled and can therefore
++        // be handled by the guest.  ESP-IDF disables TX_THRES after writing
++        // the final EOF item; the raw threshold bit may remain set, but it
++        // must not stall QEMU before it reads that EOF from RMT memory.
+         s->unsent_data=true;
+         if(DEBUG) printf("esp32_rmt_send_data waiting interrupt !!!!\n");
+         return;
+@@ -63,6 +66,13 @@
              v = s->data[((i+s->sent)%memsize+channel*64)%ESP32_RMT_BUF_WORDS];
          }
          if(v==0) { // stop sending when we see a zero
 +            /*
-+             * RMT memory uses an all-zero item as the TX terminator.  Keep it
++             * RMT memory uses an all-zero item as the TX terminator. Keep it
 +             * out of the SSI data stream, but forward it to libqemu clients so
-+             * they can observe the real end of transmission.  Velxio's WS2812
-+             * decoder uses value == 0 to flush all accumulated 24-bit pixels
-+             * as one frame instead of incorrectly flushing every pixel.
++             * they can observe the real end of transmission. Velxio's WS2812
++             * decoder uses value == 0 to flush the accumulated frame.
 +             */
 +            picsimlab_rmt_event(channel, s->conf0[channel], 0);
              s->int_raw|=(1<<(channel*3)); //set TX_END
