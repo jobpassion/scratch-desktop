@@ -1,7 +1,7 @@
 diff --git a/hw/ssi/esp32_rmt.c b/hw/ssi/esp32_rmt.c
 --- a/hw/ssi/esp32_rmt.c
 +++ b/hw/ssi/esp32_rmt.c
-@@ -57,6 +57,13 @@ static void send_data(Esp32RmtState *s, int channel) {
+@@ -57,6 +57,14 @@ static void send_data(Esp32RmtState *s, int channel) {
              v = s->data[((i+s->sent)%memsize+channel*64)%ESP32_RMT_BUF_WORDS];
          }
          if(v==0) { // stop sending when we see a zero
