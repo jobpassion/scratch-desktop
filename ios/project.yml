@@ -28,6 +28,24 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
     preBuildScripts:
+      - name: Generate iOS App Icon
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          ICON_SRC="$SRCROOT/../src/icon/ScratchDesktop.png"
+          ICON_DST="$SRCROOT/App/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          if [ ! -f "$ICON_SRC" ]; then
+            echo "error: 找不到图标源文件：$ICON_SRC"
+            exit 1
+          fi
+          /usr/bin/sips -z 1024 1024 "$ICON_SRC" --out "$ICON_DST" >/dev/null
+          WIDTH=$(/usr/bin/sips -g pixelWidth "$ICON_DST" | awk '/pixelWidth/ {print $2}')
+          HEIGHT=$(/usr/bin/sips -g pixelHeight "$ICON_DST" | awk '/pixelHeight/ {print $2}')
+          if [ "$WIDTH" != "1024" ] || [ "$HEIGHT" != "1024" ]; then
+            echo "error: iOS AppIcon 尺寸错误：${WIDTH}x${HEIGHT}"
+            exit 1
+          fi
+          echo "Generated iOS AppIcon: ${WIDTH}x${HEIGHT}"
       - name: Build Scratch Web
         basedOnDependencyAnalysis: false
         script: |
