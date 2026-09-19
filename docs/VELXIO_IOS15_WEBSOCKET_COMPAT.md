@@ -1,6 +1,6 @@
 # Velxio：iOS 15.4.1 WebSocket 相对地址兼容（v2.1）
 
-**状态：** iPad Safari 控制台临时注入的 v2.1 转换逻辑已由用户验证可恢复 WebSocket 通信、ESP32 串口输出；本仓库的 Docker 安装脚本尚待用户在现场执行并验收。**LED 不亮和电路 `solver-failed` 尚未解决，不可将仿真整体标记为修复完成。**
+**状态：** iPad Safari 控制台临时注入的 v2.1 转换逻辑已由用户验证可恢复 WebSocket 通信、ESP32 串口输出；本仓库的 Docker 安装脚本尚待用户在现场执行并验收。**用户随后反馈 LED 已重新点亮，但先前的 `solver-failed` 复现条件以及 iPad App 的完整回归仍待核实，不应把所有故障都归功于 WebSocket 修复。**
 
 ## 故障和根因
 
@@ -49,9 +49,9 @@ bash scripts/velxio-ios15-ws-hotfix.sh rollback
 
 ## 仍待处理（不要混淆）
 
-- iPad LED 不亮、电路 `[verify]` 出现 `solver-failed`，而 Mac 同一服务下 LED 亮、`solved: true`：**独立排查，尚未修复**。
+- iPad 曾出现 LED 不亮和 `[verify]` 的 `solver-failed`，而 Mac 正常；用户随后报告 LED 已重新点亮，仍需确认求解器状态及 iPad App 回归。**这不是 WebSocket v2.1 单独修复的已证实结果。**
 - `navigator.clipboard.write` 不可用：另一个兼容问题，本补丁未处理。
 - `/api/metrics/run` 404 在 Mac 正常亮灯时也存在，不能直接认定为 LED 故障原因。
-- Monaco `editor.worker` 正则兼容 v3.1 是独立补丁，本脚本不更改它。
+- Monaco `editor.worker` 正则兼容 v3.1 是独立补丁，本脚本不更改它；安装和回滚记录见 `docs/VELXIO_IOS15_MONACO_COMPAT.md`。
 
 后续如需把 v2.1 集成进自定义 Docker 镜像，应在源码或镜像构建时应用同一逻辑；目前仍是可重复执行的容器级临时补丁。
