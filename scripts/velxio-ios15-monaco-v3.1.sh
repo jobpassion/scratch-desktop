@@ -82,7 +82,7 @@ needle = r'''(?<=['"\\s])'''
 if part.count(needle) != 4 or code.count(needle) != 4:
     raise SystemExit('后行断言匹配数量不等于四；拒绝修改未知版本的 Worker')
 patched = code[:start] + part.replace(needle, '') + code[end:]
-patched += f'\n/* {marker}: four c1 lookbehinds removed; backup preserved. */\n'
+patched += f'\n/* {marker}: four c1 lookbehinds removed; source bundle preserved in backup. */\n'
 Path(dest).write_bytes(patched.encode('utf-8'))
 print('已校验：仅删除 Monaco 颜色检测函数中的四处后行断言')
 PY
